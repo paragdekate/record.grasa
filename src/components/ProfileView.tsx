@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { RefreshCw, LogIn, LogOut, CloudLightning, User, Check } from 'lucide-react';
+import { RefreshCw, LogIn, LogOut, CloudLightning, User, Check, Settings } from 'lucide-react';
 import { getSupabaseClient } from '../supabase';
 import type { GoogleProfile } from '../supabase';
 import { AlertsManager } from './AlertsManager';
-import type { InAppAlert } from '../db';
+import type { InAppAlert, ReadingUnit } from '../db';
 
 interface ProfileViewProps {
   user: GoogleProfile | null;
@@ -15,6 +15,8 @@ interface ProfileViewProps {
   onAddAlert: (alert: Omit<InAppAlert, 'id'>) => void;
   onUpdateAlert: (alert: InAppAlert) => void;
   onDeleteAlert: (id: string) => void;
+  preferredUnit: ReadingUnit;
+  onUnitToggle: (unit: ReadingUnit) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -26,7 +28,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   alerts,
   onAddAlert,
   onUpdateAlert,
-  onDeleteAlert
+  onDeleteAlert,
+  preferredUnit,
+  onUnitToggle
 }) => {
   // Sync status states
   const [syncLoading, setSyncLoading] = useState(false);
@@ -127,7 +131,46 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         )}
       </div>
 
-      {/* 2. In-App Alerts Manager Card */}
+      {/* 2. Display Preferences Card */}
+      <div style={{
+        background: 'var(--bg-input)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '12px',
+        padding: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Settings size={14} className="text-accent" />
+          <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>
+            DISPLAY PREFERENCES
+          </span>
+        </div>
+        <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '140%' }}>
+          Choose your preferred blood glucose measurement unit. This affects all dashboards, charts, and logging values.
+        </p>
+        <div className="unit-toggle-pill inline-flex" style={{ width: '100%', maxWidth: '220px' }}>
+          <button
+            type="button"
+            className={preferredUnit === 'mg/dL' ? 'active' : ''}
+            onClick={() => onUnitToggle('mg/dL')}
+            style={{ flex: 1, fontSize: '11px', padding: '6px 12px' }}
+          >
+            mg/dL
+          </button>
+          <button
+            type="button"
+            className={preferredUnit === 'mmol/L' ? 'active' : ''}
+            onClick={() => onUnitToggle('mmol/L')}
+            style={{ flex: 1, fontSize: '11px', padding: '6px 12px' }}
+          >
+            mmol/L
+          </button>
+        </div>
+      </div>
+
+      {/* 3. In-App Alerts Manager Card */}
       <div style={{
         background: 'var(--bg-input)',
         border: '1px solid var(--border-color)',
@@ -142,7 +185,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         />
       </div>
 
-      {/* 3. Database Sync Card (Only active when logged in) */}
+      {/* 4. Database Sync Card (Only active when logged in) */}
       {user && (
         <div style={{
           background: 'var(--bg-input)',

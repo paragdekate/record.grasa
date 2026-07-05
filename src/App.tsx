@@ -564,6 +564,8 @@ function App() {
             onAddAlert={handleAddAlert}
             onUpdateAlert={handleUpdateAlert}
             onDeleteAlert={handleDeleteAlert}
+            preferredUnit={preferredUnit}
+            onUnitToggle={handleUnitToggle}
           />
         )}
       </main>

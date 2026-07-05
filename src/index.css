@@ -42,12 +42,14 @@ body {
   min-height: 100vh;
   display: flex;
   justify-content: center;
+  overflow: hidden; /* Lock viewport scrolling entirely */
 }
 
 #root {
   width: 100%;
   max-width: 520px; /* Centered mobile container format for high-end mobile UX */
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh; /* Target dynamic viewport height for mobile browsers */
   background-color: #0c0d14;
   display: flex;
   flex-direction: column;
@@ -86,7 +88,7 @@ body {
   background: rgba(12, 13, 20, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  padding: 16px 20px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 20px 12px;
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
@@ -159,6 +161,12 @@ body {
 .header-unit-selector button.active {
   background: var(--accent);
   color: white;
+}
+
+@media (max-width: 580px) {
+  .header-unit-selector {
+    display: none;
+  }
 }
 
 /* Bottom Navigation */
