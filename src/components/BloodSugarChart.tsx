@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { convertValue, getStatusColor, getContextLabel } from '../db';
 import type { SugarReading, ReadingUnit } from '../db';
-import { Activity } from 'lucide-react';
+import { Activity, Maximize2, RotateCw, X } from 'lucide-react';
 
 interface BloodSugarChartProps {
   readings: SugarReading[];
@@ -11,6 +11,11 @@ interface BloodSugarChartProps {
 export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit }) => {
   const [timeframe, setTimeframe] = useState<'7d' | '14d' | '30d' | 'all'>('7d');
   const [hoveredPoint, setHoveredPoint] = useState<{ reading: SugarReading; x: number; y: number } | null>(null);
+  
+  // Custom states for Expand, Rotation, and Legends Click
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isForceLandscape, setIsForceLandscape] = useState(false);
+  const [selectedReading, setSelectedReading] = useState<SugarReading | null>(null);
 
   // 1. Filter readings based on timeframe
   const getFilteredReadings = () => {
@@ -63,8 +68,8 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
 
   // Values are stored in mg/dL internally. We calculate min/max in mg/dL, then convert labels if needed.
   const values = chartData.map(d => d.value);
-  const maxVal = Math.max(220, ...values) + 20; // Ensure some headroom
-  const minVal = Math.max(30, Math.min(60, ...values) - 20); // Keep above extreme lows or set floor at 30
+  const maxVal = Math.max(220, ...values) + 20; 
+  const minVal = Math.max(30, Math.min(60, ...values) - 20); 
 
   // Helper scales
   const getX = (index: number) => {
@@ -105,15 +110,22 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
     }
   }
 
-  // Target range boundaries in Y coordinates (mg/dL thresholds: 70 to 140)
+  // Target range boundaries in Y coordinates
   const targetMinY = getY(70);
   const targetMaxY = getY(140);
-  const targetBandHeight = targetMinY - targetMaxY; // Higher blood sugar = lower Y value
+  const targetBandHeight = targetMinY - targetMaxY;
 
   const handlePointHover = (reading: SugarReading, index: number) => {
     const cx = getX(index);
     const cy = getY(reading.value);
     setHoveredPoint({ reading, x: cx, y: cy });
+  };
+
+  const handlePointClick = (reading: SugarReading) => {
+    setSelectedReading(reading);
+    if ('vibrate' in navigator) {
+      navigator.vibrate(15);
+    }
   };
 
   const formatDate = (isoString: string) => {
@@ -126,274 +138,293 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
     return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   };
 
+  const renderSVGChartContent = () => (
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="chart-svg">
+      <defs>
+        {/* Soft gradient under line */}
+        <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.3" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.0" />
+        </linearGradient>
+        
+        {/* Glowing filter */}
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="4" result="blur" />
+          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+      </defs>
+
+      {/* 1. Target Range Band (70 - 140 mg/dL) */}
+      {targetMaxY >= paddingTop && targetMinY <= height - paddingBottom && (
+        <rect
+          x={paddingLeft}
+          y={targetMaxY}
+          width={chartWidth}
+          height={targetBandHeight}
+          fill="rgba(16, 185, 129, 0.05)"
+          stroke="rgba(16, 185, 129, 0.12)"
+          strokeDasharray="2,2"
+        />
+      )}
+
+      {/* 2. Axis Lines */}
+      <line
+        x1={paddingLeft}
+        y1={paddingTop}
+        x2={paddingLeft}
+        y2={height - paddingBottom}
+        stroke="var(--border-color)"
+        strokeWidth="1"
+        opacity="0.4"
+      />
+      <line
+        x1={paddingLeft}
+        y1={height - paddingBottom}
+        x2={width - paddingRight}
+        y2={height - paddingBottom}
+        stroke="var(--border-color)"
+        strokeWidth="1"
+        opacity="0.4"
+      />
+
+      {/* Y-Axis Unit Label at top */}
+      <text
+        x={paddingLeft - 8}
+        y={paddingTop - 6}
+        textAnchor="end"
+        fontSize="8"
+        fontWeight="800"
+        fill="var(--text-secondary)"
+        opacity="0.7"
+        letterSpacing="0.5"
+      >
+        {unit.toUpperCase()}
+      </text>
+
+      {/* Grid lines, Y Axis labels & Ticks */}
+      {gridLines.map((lineVal) => {
+        const yPos = getY(lineVal);
+        if (yPos < paddingTop || yPos > height - paddingBottom) return null;
+        
+        const displayVal = unit === 'mg/dL' 
+          ? lineVal 
+          : convertValue(lineVal, 'mg/dL', 'mmol/L');
+
+        return (
+          <g key={lineVal} className="grid-group">
+            <line
+              x1={paddingLeft}
+              y1={yPos}
+              x2={width - paddingRight}
+              y2={yPos}
+              stroke="var(--border)"
+              strokeOpacity="0.3"
+              strokeDasharray="4,4"
+            />
+            <line
+              x1={paddingLeft - 4}
+              y1={yPos}
+              x2={paddingLeft}
+              y2={yPos}
+              stroke="var(--border-color)"
+              strokeWidth="1"
+              opacity="0.5"
+            />
+            <text
+              x={paddingLeft - 8}
+              y={yPos + 4}
+              textAnchor="end"
+              fontSize="10"
+              fill="var(--text)"
+              opacity="0.6"
+            >
+              {displayVal}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* Target range indicator labels on the right edge */}
+      <text
+        x={width - paddingRight - 4}
+        y={getY(140) + 12}
+        textAnchor="end"
+        fontSize="8"
+        fontWeight="bold"
+        fill="#10b981"
+        opacity="0.6"
+      >
+        TARGET CEILING
+      </text>
+      <text
+        x={width - paddingRight - 4}
+        y={getY(70) - 4}
+        textAnchor="end"
+        fontSize="8"
+        fontWeight="bold"
+        fill="#10b981"
+        opacity="0.6"
+      >
+        TARGET FLOOR
+      </text>
+
+      {/* 3. Gradient area path */}
+      {chartData.length > 1 && (
+        <path d={areaD} fill="url(#chartGradient)" />
+      )}
+
+      {/* 4. Core trend line path */}
+      {chartData.length > 1 && (
+        <path
+          d={pathD}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter="url(#glow)"
+        />
+      )}
+
+      {/* 5. Interactive data points */}
+      {chartData.map((d, idx) => {
+        const cx = getX(idx);
+        const cy = getY(d.value);
+        const isSelected = selectedReading?.id === d.id;
+        const dotColor = getStatusColor(d.value < 70 ? 'low' : d.value <= 140 ? 'normal' : d.value <= 200 ? 'high' : 'very_high');
+        const isHovered = hoveredPoint?.reading.id === d.id;
+
+        return (
+          <g 
+            key={d.id} 
+            className="chart-dot-group"
+            onMouseEnter={() => handlePointHover(d, idx)}
+            onMouseLeave={() => setHoveredPoint(null)}
+            onClick={() => handlePointClick(d)}
+          >
+            {/* Transparent helper circle for easier tapping/hovering */}
+            <circle
+              cx={cx}
+              cy={cy}
+              r="16"
+              fill="transparent"
+              style={{ cursor: 'pointer' }}
+            />
+            
+            {/* Outer ring on hover */}
+            {(isHovered || isSelected) && (
+              <circle
+                cx={cx}
+                cy={cy}
+                r={isSelected ? 10 : 8}
+                fill="none"
+                stroke={dotColor}
+                strokeWidth={isSelected ? "2" : "1.5"}
+                strokeDasharray={isSelected ? "2,2" : "none"}
+                opacity="0.7"
+                className={isSelected ? "" : "ping-animation"}
+              />
+            )}
+            
+            {/* Inner dot */}
+            <circle
+              cx={cx}
+              cy={cy}
+              r={isSelected ? 5.5 : isHovered ? 5 : 3.5}
+              fill="var(--bg)"
+              stroke={dotColor}
+              strokeWidth="2.5"
+              style={{ transition: 'all 0.15s ease' }}
+            />
+          </g>
+        );
+      })}
+
+      {/* 6. X Axis Labels (dates) & Ticks */}
+      {chartData.length > 0 && (() => {
+        // Decimate X-axis labels to avoid crowding
+        const stride = Math.max(1, Math.floor(chartData.length / 5));
+        return chartData.map((d, idx) => {
+          const xPos = getX(idx);
+          const isLabelVisible = idx % stride === 0 || idx === chartData.length - 1;
+          
+          return (
+            <g key={`lbl-grp-${d.id}`}>
+              {/* X Axis Tick */}
+              <line
+                x1={xPos}
+                y1={height - paddingBottom}
+                x2={xPos}
+                y2={height - paddingBottom + 4}
+                stroke="var(--border-color)"
+                strokeWidth="1"
+                opacity="0.5"
+              />
+              
+              {isLabelVisible && (
+                <text
+                  x={xPos}
+                  y={height - 12}
+                  textAnchor="middle"
+                  fontSize="9"
+                  fill="var(--text)"
+                  opacity="0.6"
+                >
+                  {formatDate(d.measuredAt)}
+                </text>
+              )}
+            </g>
+          );
+        });
+      })()}
+    </svg>
+  );
+
   return (
     <div className="chart-card">
+      
+      {/* Chart Widget Header */}
       <div className="chart-header">
         <div className="chart-title">
           <Activity size={18} className="text-accent" />
           <span>Glucose Trend</span>
         </div>
-        <div className="timeframe-selector">
-          {(['7d', '14d', '30d', 'all'] as const).map(tf => (
-            <button
-              key={tf}
-              className={`tf-btn ${timeframe === tf ? 'active' : ''}`}
-              onClick={() => setTimeframe(tf)}
-            >
-              {tf.toUpperCase()}
-            </button>
-          ))}
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="timeframe-selector">
+            {(['7d', '14d', '30d', 'all'] as const).map(tf => (
+              <button
+                key={tf}
+                className={`tf-btn ${timeframe === tf ? 'active' : ''}`}
+                onClick={() => setTimeframe(tf)}
+              >
+                {tf.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          <button 
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setIsExpanded(true)}
+            style={{ padding: '6px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent' }}
+            title="Expand Chart View"
+          >
+            <Maximize2 size={14} className="text-secondary" />
+          </button>
         </div>
       </div>
 
+      {/* SVG Canvas Container */}
       <div className="chart-canvas-container" style={{ position: 'relative' }}>
-        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" className="chart-svg">
-          <defs>
-            {/* Soft gradient under line */}
-            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.0" />
-            </linearGradient>
-            
-            {/* Glowing filter */}
-            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
+        {renderSVGChartContent()}
 
-          {/* 1. Target Range Band (70 - 140 mg/dL) */}
-          {targetMaxY >= paddingTop && targetMinY <= height - paddingBottom && (
-            <rect
-              x={paddingLeft}
-              y={targetMaxY}
-              width={chartWidth}
-              height={targetBandHeight}
-              fill="rgba(16, 185, 129, 0.05)"
-              stroke="rgba(16, 185, 129, 0.12)"
-              strokeDasharray="2,2"
-            />
-          )}
-
-          {/* 2. Axis Lines */}
-          <line
-            x1={paddingLeft}
-            y1={paddingTop}
-            x2={paddingLeft}
-            y2={height - paddingBottom}
-            stroke="var(--border-color)"
-            strokeWidth="1"
-            opacity="0.4"
-          />
-          <line
-            x1={paddingLeft}
-            y1={height - paddingBottom}
-            x2={width - paddingRight}
-            y2={height - paddingBottom}
-            stroke="var(--border-color)"
-            strokeWidth="1"
-            opacity="0.4"
-          />
-
-          {/* Y-Axis Unit Label at top */}
-          <text
-            x={paddingLeft - 8}
-            y={paddingTop - 6}
-            textAnchor="end"
-            fontSize="8"
-            fontWeight="800"
-            fill="var(--text-secondary)"
-            opacity="0.7"
-            letterSpacing="0.5"
-          >
-            {unit.toUpperCase()}
-          </text>
-
-          {/* Grid lines, Y Axis labels & Ticks */}
-          {gridLines.map((lineVal) => {
-            const yPos = getY(lineVal);
-            if (yPos < paddingTop || yPos > height - paddingBottom) return null;
-            
-            const displayVal = unit === 'mg/dL' 
-              ? lineVal 
-              : convertValue(lineVal, 'mg/dL', 'mmol/L');
-
-            return (
-              <g key={lineVal} className="grid-group">
-                <line
-                  x1={paddingLeft}
-                  y1={yPos}
-                  x2={width - paddingRight}
-                  y2={yPos}
-                  stroke="var(--border)"
-                  strokeOpacity="0.3"
-                  strokeDasharray="4,4"
-                />
-                <line
-                  x1={paddingLeft - 4}
-                  y1={yPos}
-                  x2={paddingLeft}
-                  y2={yPos}
-                  stroke="var(--border-color)"
-                  strokeWidth="1"
-                  opacity="0.5"
-                />
-                <text
-                  x={paddingLeft - 8}
-                  y={yPos + 4}
-                  textAnchor="end"
-                  fontSize="10"
-                  fill="var(--text)"
-                  opacity="0.6"
-                >
-                  {displayVal}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Target range indicator labels on the right edge */}
-          <text
-            x={width - paddingRight - 4}
-            y={getY(140) + 12}
-            textAnchor="end"
-            fontSize="8"
-            fontWeight="bold"
-            fill="#10b981"
-            opacity="0.6"
-          >
-            TARGET CEILING
-          </text>
-          <text
-            x={width - paddingRight - 4}
-            y={getY(70) - 4}
-            textAnchor="end"
-            fontSize="8"
-            fontWeight="bold"
-            fill="#10b981"
-            opacity="0.6"
-          >
-            TARGET FLOOR
-          </text>
-
-          {/* 3. Gradient area path */}
-          {chartData.length > 1 && (
-            <path d={areaD} fill="url(#chartGradient)" />
-          )}
-
-          {/* 4. Core trend line path */}
-          {chartData.length > 1 && (
-            <path
-              d={pathD}
-              fill="none"
-              stroke="var(--accent)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              filter="url(#glow)"
-            />
-          )}
-
-          {/* 5. Interactive data points */}
-          {chartData.map((d, idx) => {
-            const cx = getX(idx);
-            const cy = getY(d.value);
-            const dotColor = getStatusColor(d.value < 70 ? 'low' : d.value <= 140 ? 'normal' : d.value <= 200 ? 'high' : 'very_high');
-            const isHovered = hoveredPoint?.reading.id === d.id;
-
-            return (
-              <g 
-                key={d.id} 
-                className="chart-dot-group"
-                onMouseEnter={() => handlePointHover(d, idx)}
-                onMouseLeave={() => setHoveredPoint(null)}
-              >
-                {/* Transparent helper circle for easier hovering */}
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r="16"
-                  fill="transparent"
-                  style={{ cursor: 'pointer' }}
-                />
-                
-                {/* Outer ring on hover */}
-                {isHovered && (
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r="8"
-                    fill="none"
-                    stroke={dotColor}
-                    strokeWidth="1.5"
-                    opacity="0.5"
-                    className="ping-animation"
-                  />
-                )}
-                
-                {/* Inner dot */}
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isHovered ? 5 : 3.5}
-                  fill="var(--bg)"
-                  stroke={dotColor}
-                  strokeWidth="2.5"
-                  style={{ transition: 'all 0.15s ease' }}
-                />
-              </g>
-            );
-          })}
-
-          {/* 6. X Axis Labels (dates) & Ticks */}
-          {chartData.length > 0 && (() => {
-            // Decimate X-axis labels to avoid crowding
-            const stride = Math.max(1, Math.floor(chartData.length / 5));
-            return chartData.map((d, idx) => {
-              const xPos = getX(idx);
-              const isLabelVisible = idx % stride === 0 || idx === chartData.length - 1;
-              
-              return (
-                <g key={`lbl-grp-${d.id}`}>
-                  {/* X Axis Tick */}
-                  <line
-                    x1={xPos}
-                    y1={height - paddingBottom}
-                    x2={xPos}
-                    y2={height - paddingBottom + 4}
-                    stroke="var(--border-color)"
-                    strokeWidth="1"
-                    opacity="0.5"
-                  />
-                  
-                  {isLabelVisible && (
-                    <text
-                      x={xPos}
-                      y={height - 12}
-                      textAnchor="middle"
-                      fontSize="9"
-                      fill="var(--text)"
-                      opacity="0.6"
-                    >
-                      {formatDate(d.measuredAt)}
-                    </text>
-                  )}
-                </g>
-              );
-            });
-          })()}
-        </svg>
-
-        {/* 7. Hover Tooltip Div */}
+        {/* Hover Tooltip Div */}
         {hoveredPoint && (() => {
           const r = hoveredPoint.reading;
-          const displayVal = unit === 'mg/dL' 
-            ? r.value 
-            : convertValue(r.value, 'mg/dL', 'mmol/L');
+          const displayVal = unit === 'mg/dL' ? r.value : convertValue(r.value, 'mg/dL', 'mmol/L');
           const status = r.value < 70 ? 'low' : r.value <= 140 ? 'normal' : r.value <= 200 ? 'high' : 'very_high';
           const dotColor = getStatusColor(status);
-
-          // Position tooltip to avoid overflowing chart canvas
           const tooltipWidth = 130;
           const isOnRightHalf = hoveredPoint.x > width / 2;
           const leftPos = isOnRightHalf 
@@ -419,11 +450,227 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
               <div className="tooltip-time">
                 {formatDate(r.measuredAt)} at {formatTime(r.measuredAt)}
               </div>
-              {r.notes && <div className="tooltip-notes">"{r.notes}"</div>}
             </div>
           );
         })()}
       </div>
+
+      {/* 4. selectedReading Details Legend panel */}
+      {selectedReading && (
+        <div style={{
+          marginTop: '12px',
+          background: 'var(--bg-input)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '12px',
+          padding: '12px 14px',
+          animation: 'fadeIn 0.2s ease-out',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '9px', fontWeight: '800', color: 'var(--text-secondary)', letterSpacing: '0.8px' }}>
+              📊 LOG DETAILS LEGEND
+            </span>
+            <button 
+              onClick={() => setSelectedReading(null)}
+              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', fontWeight: 'bold' }}
+            >
+              CLEAR
+            </button>
+          </div>
+          
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                backgroundColor: getStatusColor(
+                  selectedReading.value < 70 ? 'low' : selectedReading.value <= 140 ? 'normal' : selectedReading.value <= 200 ? 'high' : 'very_high'
+                ),
+                boxShadow: `0 0 10px ${getStatusColor(
+                  selectedReading.value < 70 ? 'low' : selectedReading.value <= 140 ? 'normal' : selectedReading.value <= 200 ? 'high' : 'very_high'
+                )}`
+              }} />
+              <div>
+                <span style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>
+                  {unit === 'mg/dL' ? selectedReading.value : convertValue(selectedReading.value, 'mg/dL', 'mmol/L')}
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '4px', fontWeight: '600' }}>
+                  {unit} <span style={{ color: 'var(--text-muted)' }}>({getContextLabel(selectedReading.context)})</span>
+                </span>
+              </div>
+            </div>
+            
+            <div style={{ textAlign: 'right', fontSize: '10px', color: 'var(--text-secondary)', lineHeight: '130%' }}>
+              <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{formatDate(selectedReading.measuredAt)}</div>
+              <div>{formatTime(selectedReading.measuredAt)}</div>
+            </div>
+          </div>
+          {selectedReading.notes && (
+            <p style={{ 
+              fontSize: '10px', 
+              color: 'var(--text-muted)', 
+              fontStyle: 'italic', 
+              marginTop: '4px', 
+              borderTop: '1px dashed var(--border-color)', 
+              paddingTop: '6px',
+              lineHeight: '140%'
+            }}>
+              Notes: "{selectedReading.notes}"
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Fullscreen Overlay Modal (Expand / Landscape) */}
+      {isExpanded && (
+        <div 
+          className="chart-modal-overlay"
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100vw',
+            height: '100vh',
+            backgroundColor: 'rgba(10, 11, 16, 0.98)',
+            zIndex: 9999,
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '16px',
+            boxSizing: 'border-box'
+          }}
+        >
+          {/* Modal content wrapper (supports transform rotate) */}
+          <div 
+            className={`chart-modal-container ${isForceLandscape ? 'force-landscape' : ''}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              width: '100%',
+              height: '100%',
+              gap: '12px',
+              transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+          >
+            {/* Modal Header Actions */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Activity size={18} className="text-accent" />
+                <span style={{ fontWeight: 'bold', fontSize: '14px' }}>Expanded Trend Analysis</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setIsForceLandscape(!isForceLandscape)}
+                  style={{ gap: '4px', padding: '6px 12px' }}
+                >
+                  <RotateCw size={14} className={isForceLandscape ? 'spin' : ''} />
+                  <span>{isForceLandscape ? 'Portrait' : 'Rotate Landscape'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    setIsExpanded(false);
+                    setIsForceLandscape(false);
+                  }}
+                  style={{ padding: '6px', borderRadius: '50%' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* SVG Chart Body inside Modal */}
+            <div style={{ flex: 1, position: 'relative', minHeight: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {renderSVGChartContent()}
+            </div>
+
+            {/* Details panel inside Expanded Modal (Legend) */}
+            <div style={{
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '12px',
+              padding: '14px',
+              marginTop: 'auto'
+            }}>
+              {selectedReading ? (
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '9px', fontWeight: '800', color: 'var(--text-secondary)', letterSpacing: '0.8px' }}>
+                      📊 GLUCOSE POINT LEGEND
+                    </span>
+                    <button 
+                      onClick={() => setSelectedReading(null)}
+                      style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '9px', fontWeight: 'bold' }}
+                    >
+                      CLEAR
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '12px',
+                        height: '12px',
+                        borderRadius: '50%',
+                        backgroundColor: getStatusColor(
+                          selectedReading.value < 70 ? 'low' : selectedReading.value <= 140 ? 'normal' : selectedReading.value <= 200 ? 'high' : 'very_high'
+                        ),
+                        boxShadow: `0 0 8px ${getStatusColor(
+                          selectedReading.value < 70 ? 'low' : selectedReading.value <= 140 ? 'normal' : selectedReading.value <= 200 ? 'high' : 'very_high'
+                        )}`
+                      }} />
+                      <div>
+                        <span style={{ fontSize: '20px', fontWeight: '900', color: 'var(--text-primary)' }}>
+                          {unit === 'mg/dL' ? selectedReading.value : convertValue(selectedReading.value, 'mg/dL', 'mmol/L')}
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '4px', fontWeight: 'bold' }}>
+                          {unit} <span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>({getContextLabel(selectedReading.context)})</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', fontSize: '10px', color: 'var(--text-secondary)' }}>
+                      <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{formatDate(selectedReading.measuredAt)}</div>
+                      <div>{formatTime(selectedReading.measuredAt)}</div>
+                    </div>
+                  </div>
+                  {selectedReading.notes && (
+                    <p style={{ fontSize: '10px', color: 'var(--text-muted)', fontStyle: 'italic', marginTop: '6px', borderTop: '1px dashed var(--border-color)', paddingTop: '6px' }}>
+                      Notes: "{selectedReading.notes}"
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '6px', color: 'var(--text-secondary)', fontSize: '11px' }}>
+                  💡 <strong>Tap any data point</strong> in the chart above to display its detailed information legend here.
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* Embedded rotation stylesheet rules */}
+          <style>{`
+            .chart-modal-container.force-landscape {
+              width: 100vh !important;
+              height: 100vw !important;
+              transform: rotate(90deg);
+              transform-origin: center center;
+              position: absolute;
+              top: 50%;
+              left: 50%;
+              margin-left: -50vh;
+              margin-top: -50vw;
+            }
+          `}</style>
+        </div>
+      )}
+
     </div>
   );
 };
