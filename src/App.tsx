@@ -11,21 +11,31 @@ import {
   convertValue
 } from './db';
 import type { SugarReading, ReadingUnit } from './db';
+import { getSupabaseClient, getMockUser, setMockUser, getSupabaseConfig } from './supabase';
+import type { GoogleProfile } from './supabase';
+
 import { StatsDashboard } from './components/StatsDashboard';
 import { BloodSugarChart } from './components/BloodSugarChart';
 import { LogReadingForm } from './components/LogReadingForm';
 import { HistoryList } from './components/HistoryList';
 import { SupabaseSchema } from './components/SupabaseSchema';
+import { GoogleLoginModal } from './components/GoogleLoginModal';
+
 import { LayoutDashboard, PlusCircle, History, Database, Droplet } from 'lucide-react';
 
 function App() {
   const [readings, setReadings] = useState<SugarReading[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'log' | 'history' | 'supabase'>('dashboard');
   const [preferredUnit, setPreferredUnit] = useState<ReadingUnit>('mg/dL');
+  
+  // Auth state management
+  const [user, setUser] = useState<GoogleProfile | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
+  const [isRealSupabase, setIsRealSupabase] = useState<boolean>(false);
 
-  // 1. Initial Data Load
+  // 1. Initial Data and Session Setup
   useEffect(() => {
-    // Load readings (will auto-populate mock data if storage is empty)
+    // Load local storage readings (pre-populates if empty)
     const stored = loadReadings();
     setReadings(stored);
 
@@ -34,7 +44,51 @@ function App() {
     if (savedUnit === 'mg/dL' || savedUnit === 'mmol/L') {
       setPreferredUnit(savedUnit);
     }
-  }, []);
+
+    // Check if real Supabase keys exist
+    const config = getSupabaseConfig();
+    setIsRealSupabase(!!config);
+
+    // Initialize Auth (Real vs Mock)
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      // Get current session user
+      supabase.auth.getUser().then(({ data: { user: sbUser } }) => {
+        if (sbUser) {
+          setUser({
+            id: sbUser.id,
+            email: sbUser.email || '',
+            name: sbUser.user_metadata.full_name || sbUser.user_metadata.name || sbUser.email?.split('@')[0] || 'User',
+            avatarUrl: sbUser.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${sbUser.id}`
+          });
+        } else {
+          setUser(null);
+        }
+      });
+
+      // Listen for auth state changes (sign ins/outs)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          setUser({
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
+            avatarUrl: session.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${session.user.id}`
+          });
+        } else {
+          setUser(null);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    } else {
+      // Fallback to local storage mock user
+      const mock = getMockUser();
+      setUser(mock);
+    }
+  }, [activeTab]); // Re-run checks when visiting settings tabs
 
   // 2. Change Unit Handler
   const handleUnitToggle = (unit: ReadingUnit) => {
@@ -45,12 +99,104 @@ function App() {
     }
   };
 
-  // 3. CRUD Bindings
+  // 3. Login / Logout Handlers
+  const handleLoginSuccess = (profile: GoogleProfile) => {
+    setMockUser(profile);
+    setUser(profile);
+  };
+
+  const handleLogout = async () => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    setMockUser(null);
+    setUser(null);
+    if ('vibrate' in navigator) {
+      navigator.vibrate(40);
+    }
+  };
+
+  const handleTriggerRealOAuth = async () => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin
+          }
+        });
+        if (error) alert(`OAuth Error: ${error.message}`);
+      } catch (e: any) {
+        alert(e.message || 'An error occurred during Google OAuth redirect.');
+      }
+    }
+  };
+
+  // 4. Database Cloud Synchronization
+  const handleSyncReadings = async (): Promise<{ success: boolean; count: number; message: string }> => {
+    const supabase = getSupabaseClient();
+    if (!user) {
+      return { success: false, count: 0, message: 'You must be signed in to sync.' };
+    }
+
+    if (supabase) {
+      // ⚠️ REAL SYNC: Upload to supabase table
+      try {
+        const rows = readings.map(r => ({
+          user_id: user.id,
+          value: r.value,
+          unit: r.unit,
+          context: r.context,
+          notes: r.notes || '',
+          measured_at: r.measuredAt
+        }));
+
+        // Push all records to the Supabase table (insert rows)
+        const { error } = await supabase
+          .from('blood_sugar_readings')
+          .insert(rows);
+
+        if (error) {
+          console.error('Supabase insert error:', error);
+          
+          if (error.code === '42P01') {
+            return { 
+              success: false, 
+              count: 0, 
+              message: 'Table blood_sugar_readings does not exist. Did you run the SQL script in your Supabase SQL editor?' 
+            };
+          }
+          
+          return { success: false, count: 0, message: `Database error: ${error.message}` };
+        }
+
+        return { 
+          success: true, 
+          count: rows.length, 
+          message: `Successfully synchronized ${rows.length} readings to your live Supabase DB!` 
+        };
+      } catch (e: any) {
+        return { success: false, count: 0, message: e.message || 'Network sync error.' };
+      }
+    } else {
+      // 🧪 MOCK SYNC: Simulation
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      return { 
+        success: true, 
+        count: readings.length, 
+        message: `Synced ${readings.length} readings to cloud (Simulation Mode: Mock Cloud Storage updated).` 
+      };
+    }
+  };
+
+  // 5. CRUD Bindings
   const handleAddReading = (newReading: Omit<SugarReading, 'id'>) => {
     const added = addReading(newReading);
     setReadings(prev => [added, ...prev]);
     
-    // Redirect to dashboard so they see the new data plotted immediately
+    // Redirect to dashboard tab to immediately visualize changes
     setTimeout(() => {
       setActiveTab('dashboard');
     }, 1000);
@@ -74,7 +220,7 @@ function App() {
     }
   };
 
-  // 4. Extract latest reading details for header banner
+  // 6. Header display helpers
   const latestReading = readings.length > 0 ? readings[0] : null;
   const latestStatus = latestReading ? getStatus(latestReading.value) : null;
   const latestStatusColor = latestStatus ? getStatusColor(latestStatus) : 'transparent';
@@ -84,6 +230,15 @@ function App() {
 
   return (
     <>
+      {showLoginModal && (
+        <GoogleLoginModal
+          onClose={() => setShowLoginModal(false)}
+          onLoginSuccess={handleLoginSuccess}
+          isRealSupabase={isRealSupabase}
+          onTriggerRealOAuth={handleTriggerRealOAuth}
+        />
+      )}
+
       {/* Sleek App Header */}
       <header className="app-header">
         <div className="brand-section">
@@ -135,6 +290,37 @@ function App() {
               mmol/L
             </button>
           </div>
+
+          {/* User profile avatar or login trigger */}
+          {user ? (
+            <img 
+              src={user.avatarUrl} 
+              alt={user.name} 
+              style={{ 
+                width: '28px', 
+                height: '28px', 
+                borderRadius: '50%', 
+                border: '1.5px solid var(--accent)', 
+                cursor: 'pointer',
+                backgroundColor: 'var(--bg-card)'
+              }}
+              onClick={() => {
+                setActiveTab('supabase');
+                if ('vibrate' in navigator) {
+                  navigator.vibrate(20);
+                }
+              }}
+              title={`Signed in as ${user.name}. Click to view database settings.`}
+            />
+          ) : (
+            <button
+              className="btn btn-secondary btn-xs"
+              onClick={() => setShowLoginModal(true)}
+              style={{ padding: '6px 10px', borderRadius: '14px', fontSize: '10px', fontWeight: 'bold' }}
+            >
+              Sign In
+            </button>
+          )}
         </div>
       </header>
 
@@ -173,7 +359,13 @@ function App() {
         )}
 
         {activeTab === 'supabase' && (
-          <SupabaseSchema />
+          <SupabaseSchema 
+            user={user}
+            onLoginClick={() => setShowLoginModal(true)}
+            onLogoutClick={handleLogout}
+            readingsCount={readings.length}
+            onSyncTrigger={handleSyncReadings}
+          />
         )}
       </main>
 

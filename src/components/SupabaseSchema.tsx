@@ -1,8 +1,88 @@
-import React, { useState } from 'react';
-import { Database, Copy, Check, Shield, Key } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Database, Copy, Check, RefreshCw, LogIn, LogOut, CloudLightning, Server } from 'lucide-react';
+import { getSupabaseConfig, saveSupabaseConfig, clearSupabaseConfig, resetSupabaseInstance } from '../supabase';
+import type { GoogleProfile } from '../supabase';
 
-export const SupabaseSchema: React.FC = () => {
+interface SupabaseSchemaProps {
+  user: GoogleProfile | null;
+  onLoginClick: () => void;
+  onLogoutClick: () => void;
+  readingsCount: number;
+  onSyncTrigger: () => Promise<{ success: boolean; count: number; message: string }>;
+}
+
+export const SupabaseSchema: React.FC<SupabaseSchemaProps> = ({
+  user,
+  onLoginClick,
+  onLogoutClick,
+  readingsCount,
+  onSyncTrigger
+}) => {
   const [copied, setCopied] = useState(false);
+  
+  // Database configuration states
+  const [dbUrl, setDbUrl] = useState('');
+  const [dbAnonKey, setDbAnonKey] = useState('');
+  const [isConnected, setIsConnected] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'cleared'>('idle');
+  
+  // Sync status states
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Load existing credentials on mount
+  useEffect(() => {
+    const config = getSupabaseConfig();
+    if (config) {
+      setDbUrl(config.url);
+      setDbAnonKey(config.anonKey);
+      setIsConnected(true);
+    }
+  }, []);
+
+  const handleSaveConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dbUrl || !dbAnonKey) return;
+    
+    saveSupabaseConfig(dbUrl, dbAnonKey);
+    resetSupabaseInstance();
+    setIsConnected(true);
+    setSaveStatus('saved');
+    
+    if ('vibrate' in navigator) {
+      navigator.vibrate([50, 50]);
+    }
+    
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
+  const handleClearConfig = () => {
+    if (window.confirm('Clear Supabase settings and return to local simulation?')) {
+      clearSupabaseConfig();
+      resetSupabaseInstance();
+      setDbUrl('');
+      setDbAnonKey('');
+      setIsConnected(false);
+      setSaveStatus('cleared');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    }
+  };
+
+  const handleSyncClick = async () => {
+    setSyncLoading(true);
+    setSyncResult(null);
+    try {
+      const res = await onSyncTrigger();
+      setSyncResult({ success: res.success, message: res.message });
+      if ('vibrate' in navigator) {
+        navigator.vibrate(100);
+      }
+    } catch (e) {
+      setSyncResult({ success: false, message: 'Sync failed due to an unexpected error.' });
+    } finally {
+      setSyncLoading(false);
+    }
+  };
 
   const sqlCode = `-- 1. Table to store blood sugar readings
 create table public.blood_sugar_readings (
@@ -43,92 +123,230 @@ create index blood_sugar_readings_user_id_measured_at_idx
   const copyToClipboard = () => {
     navigator.clipboard.writeText(sqlCode);
     setCopied(true);
-    
-    // Trigger haptic response
     if ('vibrate' in navigator) {
       navigator.vibrate(50);
     }
-    
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="schema-card">
-      <div className="schema-intro">
-        <div className="intro-title">
-          <Database size={24} className="text-accent" />
-          <h2>Supabase & Future Auth Integration</h2>
+    <div className="schema-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      
+      {/* 1. Account Section */}
+      <div style={{
+        background: 'var(--bg-input)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '12px',
+        padding: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>
+            GOOGLE AUTH STATUS
+          </span>
+          <span 
+            className="text-xs" 
+            style={{ 
+              fontWeight: 'bold', 
+              color: isConnected ? 'var(--cyan)' : 'var(--text-muted)' 
+            }}
+          >
+            {isConnected ? 'SUPABASE MODE' : 'LOCAL SIMULATOR'}
+          </span>
         </div>
-        <p className="intro-text">
-          Ready to scale your app? This schema is pre-configured with <strong>Row Level Security (RLS)</strong>, meaning users can only access their own readings. It connects directly to Supabase Authentication for instant multi-user capabilities.
-        </p>
-      </div>
 
-      <div className="schema-tabs">
-        <div className="schema-tab-content">
-          <div className="code-header">
-            <span>SQL Schema Script</span>
-            <button className="btn-copy" onClick={copyToClipboard}>
-              {copied ? (
-                <>
-                  <Check size={14} className="text-emerald mr-1" />
-                  <span>Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy size={14} className="mr-1" />
-                  <span>Copy SQL</span>
-                </>
-              )}
+        {user ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <img 
+                src={user.avatarUrl} 
+                alt={user.name} 
+                style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }}
+              />
+              <div>
+                <h4 style={{ fontSize: '13px', fontWeight: 'bold' }}>{user.name}</h4>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{user.email}</p>
+              </div>
+            </div>
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-xs" 
+              onClick={onLogoutClick}
+              style={{ gap: '4px', padding: '6px 10px', height: 'fit-content' }}
+            >
+              <LogOut size={12} />
+              <span>Log Out</span>
             </button>
           </div>
-          <pre className="code-block">
-            <code>{sqlCode}</code>
-          </pre>
-        </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '10px 0' }}>
+            <p className="text-sm text-secondary mb-2">You are currently using the app offline.</p>
+            <button 
+              type="button" 
+              className="btn btn-primary btn-sm" 
+              onClick={onLoginClick}
+              style={{ gap: '6px', margin: '0 auto' }}
+            >
+              <LogIn size={14} />
+              <span>Sign in with Google</span>
+            </button>
+          </div>
+        )}
       </div>
 
-      <div className="steps-container">
-        <h3>Google Login & Supabase Setup</h3>
-        
-        <div className="step-card">
-          <div className="step-number"><Key size={16} /></div>
-          <div className="step-content">
-            <h4>1. Google OAuth Client ID</h4>
-            <p>
-              Create a project in the Google Cloud Console, configure your OAuth Consent Screen, and create a client ID of type "Web Application".
-            </p>
+      {/* 2. Database Sync Card (Only active when logged in) */}
+      {user && (
+        <div style={{
+          background: 'var(--bg-input)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '12px',
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CloudLightning size={16} className="text-emerald" />
+            <h4 style={{ fontSize: '13px', fontWeight: 'bold' }}>Sync Readings to Cloud</h4>
           </div>
+          
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '140%' }}>
+            Save your device logs safely. Currently tracking <strong>{readingsCount} logs</strong> locally. Syncing will upload all readings.
+          </p>
+
+          <button
+            type="button"
+            className={`btn btn-sm ${syncLoading ? 'btn-secondary' : 'btn-primary'}`}
+            disabled={syncLoading}
+            onClick={handleSyncClick}
+            style={{ gap: '6px', width: 'fit-content' }}
+          >
+            <RefreshCw size={12} className={syncLoading ? 'spin' : ''} />
+            <span>{syncLoading ? 'Uploading...' : 'Sync Now'}</span>
+          </button>
+
+          {syncResult && (
+            <div 
+              style={{
+                fontSize: '11px',
+                padding: '8px',
+                borderRadius: '6px',
+                backgroundColor: syncResult.success ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                border: `1px solid ${syncResult.success ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`,
+                color: syncResult.success ? 'var(--emerald)' : 'var(--red)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Check size={12} />
+              <span>{syncResult.message}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. Credentials Form Card */}
+      <div style={{
+        background: 'var(--bg-input)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '12px',
+        padding: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Server size={16} className="text-accent" />
+          <h4 style={{ fontSize: '13px', fontWeight: 'bold' }}>Supabase Connection Settings</h4>
         </div>
 
-        <div className="step-card">
-          <div className="step-number"><Database size={16} /></div>
-          <div className="step-content">
-            <h4>2. Enable Google Provider in Supabase</h4>
-            <p>
-              Go to your Supabase Dashboard &gt; Authentication &gt; Providers &gt; Google. Toggle it on and enter your Google Client ID and Client Secret. Copy the Redirect URL from Supabase back to Google Cloud Console.
-            </p>
+        <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="form-group">
+            <label className="input-label" htmlFor="db-url">SUPABASE PROJECT URL</label>
+            <input
+              id="db-url"
+              type="url"
+              value={dbUrl}
+              onChange={(e) => setDbUrl(e.target.value)}
+              placeholder="https://yourprojectid.supabase.co"
+              className="text-input font-mono text-xs"
+              required
+            />
           </div>
-        </div>
 
-        <div className="step-card">
-          <div className="step-number"><Shield size={16} /></div>
-          <div className="step-content">
-            <h4>3. Client-Side Authentication Code</h4>
-            <p>
-              Initialize Supabase Client in your frontend and trigger Google login using:
-            </p>
-            <pre className="small-code">
-{`const signInWithGoogle = async () => {
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.origin }
-  });
-};`}
-            </pre>
+          <div className="form-group">
+            <label className="input-label" htmlFor="db-key">SUPABASE ANON PUBLIC KEY</label>
+            <input
+              id="db-key"
+              type="password"
+              value={dbAnonKey}
+              onChange={(e) => setDbAnonKey(e.target.value)}
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              className="text-input font-mono text-xs"
+              required
+            />
           </div>
-        </div>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button type="submit" className="btn btn-primary btn-xs" style={{ padding: '8px 12px' }}>
+              Save Credentials
+            </button>
+            
+            {isConnected && (
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-xs" 
+                onClick={handleClearConfig}
+                style={{ color: 'var(--red)', borderColor: 'rgba(239,68,68,0.2)' }}
+              >
+                Disconnect URL
+              </button>
+            )}
+          </div>
+
+          {saveStatus === 'saved' && (
+            <span className="text-xs text-emerald font-bold">✓ Credentials saved. Client re-initialized.</span>
+          )}
+          {saveStatus === 'cleared' && (
+            <span className="text-xs text-secondary">✓ Credentials removed. Operating in Offline/Demo mode.</span>
+          )}
+        </form>
       </div>
+
+      {/* 4. SQL Schema Card */}
+      <div className="schema-intro" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+        <div className="intro-title">
+          <Database size={20} className="text-accent" />
+          <h3 style={{ fontSize: '14px', fontWeight: 'bold' }}>Supabase SQL Table Script</h3>
+        </div>
+        <p className="intro-text" style={{ fontSize: '11px' }}>
+          Execute this SQL in your Supabase Project dashboard to spin up your database table. RLS policies safeguard read/write access.
+        </p>
+
+        <div className="code-header" style={{ marginTop: '8px' }}>
+          <span>SQL Script</span>
+          <button className="btn-copy" onClick={copyToClipboard}>
+            {copied ? (
+              <>
+                <Check size={12} className="text-emerald mr-1" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={12} className="mr-1" />
+                <span>Copy SQL</span>
+              </>
+            )}
+          </button>
+        </div>
+        <pre className="code-block" style={{ maxHeight: '180px', overflowY: 'auto' }}>
+          <code>{sqlCode}</code>
+        </pre>
+      </div>
+
     </div>
   );
 };
