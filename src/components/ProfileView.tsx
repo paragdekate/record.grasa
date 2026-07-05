@@ -17,6 +17,11 @@ interface ProfileViewProps {
   onDeleteAlert: (id: string) => void;
   preferredUnit: ReadingUnit;
   onUnitToggle: (unit: ReadingUnit) => void;
+  pushSupported: boolean;
+  pushSubscribed: boolean;
+  pushLoading: boolean;
+  onSubscribePush: () => Promise<void>;
+  onUnsubscribePush: () => Promise<void>;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -30,7 +35,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateAlert,
   onDeleteAlert,
   preferredUnit,
-  onUnitToggle
+  onUnitToggle,
+  pushSupported,
+  pushSubscribed,
+  pushLoading,
+  onSubscribePush,
+  onUnsubscribePush
 }) => {
   // Sync status states
   const [syncLoading, setSyncLoading] = useState(false);
@@ -232,6 +242,65 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             >
               <Check size={12} />
               <span>{syncResult.message}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 5. Push Notifications Card (Only active when logged in) */}
+      {user && (
+        <div style={{
+          background: 'var(--bg-input)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '12px',
+          padding: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '16px' }}>🔔</span>
+            <h4 style={{ fontSize: '13px', fontWeight: 'bold' }}>Push Notifications (iOS/Android PWA)</h4>
+          </div>
+          
+          <p style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '140%' }}>
+            Enable notification alerts to receive post-meal reminders even when the browser or app is completely closed.
+            <br />
+            <strong style={{ color: 'var(--text-muted)' }}>Note: On iOS, this requires adding the app to your Home Screen first.</strong>
+          </p>
+
+          {!pushSupported ? (
+            <div style={{ fontSize: '11px', color: 'var(--red)', padding: '8px', borderRadius: '6px', backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              Push Notifications are not supported on this browser/device. Try opening this app as an installed PWA.
+            </div>
+          ) : (
+            <button
+              type="button"
+              className={`btn btn-sm ${pushSubscribed ? 'btn-secondary' : 'btn-primary'}`}
+              disabled={pushLoading}
+              onClick={pushSubscribed ? onUnsubscribePush : onSubscribePush}
+              style={{ gap: '6px', width: 'fit-content' }}
+            >
+              <span>{pushLoading ? 'Processing...' : (pushSubscribed ? 'Disable Notifications' : 'Enable Notifications')}</span>
+            </button>
+          )}
+
+          {pushSupported && pushSubscribed && (
+            <div 
+              style={{
+                fontSize: '11px',
+                padding: '8px',
+                borderRadius: '6px',
+                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                border: '1px solid rgba(16, 185, 129, 0.2)',
+                color: 'var(--emerald)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--emerald)' }}></span>
+              <span>Notifications are active and configured for this device.</span>
             </div>
           )}
         </div>

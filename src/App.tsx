@@ -40,6 +40,11 @@ function App() {
   const [snoozedAlerts, setSnoozedAlerts] = useState<{ [alertId: string]: number }>({});
   const [skippedAlertToast, setSkippedAlertToast] = useState<string | null>(null);
 
+  // Web Push Notifications state
+  const [pushSupported, setPushSupported] = useState<boolean>(false);
+  const [pushSubscribed, setPushSubscribed] = useState<boolean>(false);
+  const [pushLoading, setPushLoading] = useState<boolean>(false);
+
   // 1. Initial Data and Session Setup
   useEffect(() => {
     // Load local storage readings
@@ -211,6 +216,54 @@ function App() {
       setUser(null);
     }
   }, [activeTab]); // Re-run checks when visiting settings tabs
+
+  // Check Push Notification Support and Status
+  useEffect(() => {
+    const checkPushSupport = async () => {
+      const isSupported = ('serviceWorker' in navigator) && ('PushManager' in window);
+      setPushSupported(isSupported);
+
+      if (isSupported) {
+        try {
+          // Register service worker if not registered
+          const registration = await navigator.serviceWorker.register('/sw.js');
+          const subscription = await registration.pushManager.getSubscription();
+          setPushSubscribed(!!subscription);
+        } catch (e) {
+          console.error('Failed to check push subscription status:', e);
+        }
+      }
+    };
+    checkPushSupport();
+  }, [user]);
+
+  // Detect Tab / Browser Closure to Send Push Alert
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && pushSubscribed) {
+        const supabase = getSupabaseClient();
+        if (supabase && user) {
+          const data = JSON.stringify({ userId: user.id });
+          const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify-closed`;
+          
+          fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            },
+            body: data,
+            keepalive: true
+          }).catch((err) => {
+            console.error('Failed to send visibility beacon:', err);
+          });
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [user, pushSubscribed]);
 
   // Background daemon checking for reminders every 10 seconds
   useEffect(() => {
@@ -587,6 +640,87 @@ function App() {
     }
   };
 
+  // --- Push Notification Subscription Handlers ---
+  const handleSubscribePush = async () => {
+    if (!pushSupported) return;
+    setPushLoading(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        alert('Permission for notifications was denied.');
+        setPushLoading(false);
+        return;
+      }
+
+      const registration = await navigator.serviceWorker.ready;
+      const publicVapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+      if (!publicVapidKey) {
+        alert('VITE_VAPID_PUBLIC_KEY is not configured in the client environment.');
+        setPushLoading(false);
+        return;
+      }
+
+      const convertedVapidKey = urlBase64ToUint8Array(publicVapidKey);
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: convertedVapidKey
+      });
+
+      const supabase = getSupabaseClient();
+      if (supabase && user) {
+        const { error } = await supabase
+          .from('push_subscriptions')
+          .upsert({
+            user_id: user.id,
+            endpoint: subscription.endpoint,
+            subscription: JSON.parse(JSON.stringify(subscription)),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'endpoint' });
+
+        if (error) {
+          console.error('Failed to save subscription to Supabase:', error);
+          alert(`Failed to register push on database: ${error.message}`);
+          return;
+        }
+      }
+
+      setPushSubscribed(true);
+    } catch (err: any) {
+      console.error('Error subscribing to push:', err);
+      alert(`Subscription failed: ${err.message}`);
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
+  const handleUnsubscribePush = async () => {
+    if (!pushSupported) return;
+    setPushLoading(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        const endpoint = subscription.endpoint;
+        await subscription.unsubscribe();
+
+        const supabase = getSupabaseClient();
+        if (supabase && user) {
+          await supabase
+            .from('push_subscriptions')
+            .delete()
+            .eq('endpoint', endpoint);
+        }
+      }
+      setPushSubscribed(false);
+    } catch (err: any) {
+      console.error('Error unsubscribing from push:', err);
+      alert(`Unsubscribe failed: ${err.message}`);
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   // 6. Header display helpers
   const latestReading = readings.length > 0 ? readings[0] : null;
   const latestStatus = latestReading ? getStatus(latestReading.value) : null;
@@ -772,6 +906,11 @@ function App() {
             onDeleteAlert={handleDeleteAlert}
             preferredUnit={preferredUnit}
             onUnitToggle={handleUnitToggle}
+            pushSupported={pushSupported}
+            pushSubscribed={pushSubscribed}
+            pushLoading={pushLoading}
+            onSubscribePush={handleSubscribePush}
+            onUnsubscribePush={handleUnsubscribePush}
           />
         )}
       </main>
@@ -824,6 +963,22 @@ function App() {
       </nav>
     </>
   );
+}
+
+// Helper to convert base64 VAPID Key to Uint8Array for PushManager
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/\-/g, '+')
+    .replace(/_/g, '/');
+
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 export default App;

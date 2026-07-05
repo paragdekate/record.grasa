@@ -1,0 +1,24 @@
+{
+  "name": "GlucoSync - Smart Blood Sugar Tracker",
+  "short_name": "GlucoSync",
+  "description": "Log and track your blood glucose levels with trend charts and reminders.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0b10",
+  "theme_color": "#0a0b10",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
