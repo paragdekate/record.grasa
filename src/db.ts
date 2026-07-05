@@ -172,3 +172,115 @@ export function calculateStats(readings: SugarReading[]): SugarStats {
     veryHighCount
   };
 }
+
+// --- IN-APP ALERTS CONFIGURATION ---
+
+export interface InAppAlert {
+  id: string;
+  type: 'meal' | 'record';
+  time: string; // "HH:MM" 24h format
+  label: string;
+  isActive: boolean;
+  mealType?: 'breakfast' | 'lunch' | 'dinner' | 'bedtime' | 'other';
+  lastTriggeredDate?: string; // Format: "YYYY-MM-DD" to avoid repeating same alert within same day
+}
+
+const ALERTS_KEY = 'blood_sugar_alerts';
+
+// Synthesize a beep sound using Web Audio API (no external file dependencies)
+export function playBeepSound(isUrgent: boolean = false): void {
+  try {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const playOscillator = (freq: number, duration: number, delay: number) => {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(freq, audioCtx.currentTime + delay);
+      
+      gainNode.gain.setValueAtTime(0, audioCtx.currentTime + delay);
+      gainNode.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + delay + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + delay + duration);
+      
+      oscillator.start(audioCtx.currentTime + delay);
+      oscillator.stop(audioCtx.currentTime + delay + duration);
+    };
+
+    if (isUrgent) {
+      // Alarm double high beep (like a medical monitor)
+      playOscillator(987.77, 0.15, 0); // B5 note
+      playOscillator(987.77, 0.15, 0.2); // B5 note
+    } else {
+      // Gentle reminder notification chime
+      playOscillator(523.25, 0.25, 0); // C5 note
+      playOscillator(659.25, 0.35, 0.15); // E5 note
+    }
+  } catch (e) {
+    console.warn('Web Audio API not supported or blocked by user gesture', e);
+  }
+}
+
+export function loadAlerts(): InAppAlert[] {
+  const stored = localStorage.getItem(ALERTS_KEY);
+  if (!stored) {
+    // Generate default alerts on first launch
+    const defaults: InAppAlert[] = [
+      {
+        id: 'a-1',
+        type: 'meal',
+        time: '08:00',
+        label: 'Breakfast Glucose Check',
+        isActive: true,
+        mealType: 'breakfast'
+      },
+      {
+        id: 'a-2',
+        type: 'record',
+        time: '09:00',
+        label: 'Morning Logging Reminder',
+        isActive: false
+      }
+    ];
+    saveAlerts(defaults);
+    return defaults;
+  }
+  try {
+    return JSON.parse(stored);
+  } catch (e) {
+    return [];
+  }
+}
+
+export function saveAlerts(alerts: InAppAlert[]): void {
+  localStorage.setItem(ALERTS_KEY, JSON.stringify(alerts));
+}
+
+export function addAlert(alert: Omit<InAppAlert, 'id'>): InAppAlert {
+  const newAlert: InAppAlert = {
+    ...alert,
+    id: crypto.randomUUID()
+  };
+  const alerts = loadAlerts();
+  alerts.push(newAlert);
+  saveAlerts(alerts);
+  return newAlert;
+}
+
+export function updateAlert(updated: InAppAlert): void {
+  const alerts = loadAlerts();
+  const index = alerts.findIndex(a => a.id === updated.id);
+  if (index !== -1) {
+    alerts[index] = updated;
+    saveAlerts(alerts);
+  }
+}
+
+export function deleteAlert(id: string): void {
+  const alerts = loadAlerts();
+  const filtered = alerts.filter(a => a.id !== id);
+  saveAlerts(filtered);
+}
+

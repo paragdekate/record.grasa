@@ -1,25 +1,26 @@
 import React, { useState } from 'react';
-import { Database, Copy, Check, RefreshCw, LogIn, LogOut, CloudLightning } from 'lucide-react';
+import { RefreshCw, LogIn, LogOut, CloudLightning, User, Check } from 'lucide-react';
 import { getSupabaseClient } from '../supabase';
 import type { GoogleProfile } from '../supabase';
+import { AlertsManager } from './AlertsManager';
 
-interface SupabaseSchemaProps {
+interface ProfileViewProps {
   user: GoogleProfile | null;
   onLoginClick: () => void;
   onLogoutClick: () => void;
   readingsCount: number;
   onSyncTrigger: () => Promise<{ success: boolean; count: number; message: string }>;
+  onAlertsChanged: () => void;
 }
 
-export const SupabaseSchema: React.FC<SupabaseSchemaProps> = ({
+export const ProfileView: React.FC<ProfileViewProps> = ({
   user,
   onLoginClick,
   onLogoutClick,
   readingsCount,
-  onSyncTrigger
+  onSyncTrigger,
+  onAlertsChanged
 }) => {
-  const [copied, setCopied] = useState(false);
-  
   // Sync status states
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -43,51 +44,6 @@ export const SupabaseSchema: React.FC<SupabaseSchemaProps> = ({
     }
   };
 
-  const sqlCode = `-- 1. Table to store blood sugar readings
-create table public.blood_sugar_readings (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references auth.users(id) on delete cascade not null,
-  value numeric not null, -- Stores numerical blood glucose reading
-  unit varchar(10) not null default 'mg/dL', -- 'mg/dL' or 'mmol/L'
-  context varchar(30) not null, -- 'fasting', 'before_breakfast', etc.
-  notes text, -- Optional logs or food items eaten
-  measured_at timestamp with time zone not null default timezone('utc'::text, now()),
-  created_at timestamp with time zone not null default timezone('utc'::text, now())
-);
-
--- 2. Enable Row Level Security (RLS)
-alter table public.blood_sugar_readings enable row level security;
-
--- 3. Row Level Security (RLS) Policies
-create policy "Users can insert their own readings"
-  on public.blood_sugar_readings for insert
-  with check (auth.uid() = user_id);
-
-create policy "Users can view their own readings"
-  on public.blood_sugar_readings for select
-  using (auth.uid() = user_id);
-
-create policy "Users can update their own readings"
-  on public.blood_sugar_readings for update
-  using (auth.uid() = user_id);
-
-create policy "Users can delete their own readings"
-  on public.blood_sugar_readings for delete
-  using (auth.uid() = user_id);
-
--- 4. Create index for fast query retrieval sorted by time
-create index blood_sugar_readings_user_id_measured_at_idx 
-  on public.blood_sugar_readings (user_id, measured_at desc);`;
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(sqlCode);
-    setCopied(true);
-    if ('vibrate' in navigator) {
-      navigator.vibrate(50);
-    }
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="schema-card" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       
@@ -102,9 +58,12 @@ create index blood_sugar_readings_user_id_measured_at_idx
         gap: '12px'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>
-            GOOGLE AUTH STATUS
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <User size={14} className="text-accent" />
+            <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-secondary)', letterSpacing: '0.5px' }}>
+              GOOGLE AUTH PROFILE
+            </span>
+          </div>
           <span 
             className="text-xs" 
             style={{ 
@@ -112,7 +71,7 @@ create index blood_sugar_readings_user_id_measured_at_idx
               color: isConnected ? 'var(--cyan)' : 'var(--text-muted)' 
             }}
           >
-            {isConnected ? 'SUPABASE ACTIVE' : 'OFFLINE MODE (ENV MISSING)'}
+            {isConnected ? 'SUPABASE ACTIVE' : 'OFFLINE MODE'}
           </span>
         </div>
 
@@ -154,14 +113,24 @@ create index blood_sugar_readings_user_id_measured_at_idx
             </button>
             {!isConnected && (
               <p className="text-xs text-red mt-2">
-                Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file to enable authentication.
+                Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your env file to enable authentication.
               </p>
             )}
           </div>
         )}
       </div>
 
-      {/* 2. Database Sync Card (Only active when logged in) */}
+      {/* 2. In-App Alerts Manager Card */}
+      <div style={{
+        background: 'var(--bg-input)',
+        border: '1px solid var(--border-color)',
+        borderRadius: '12px',
+        padding: '16px'
+      }}>
+        <AlertsManager onAlertsChanged={onAlertsChanged} />
+      </div>
+
+      {/* 3. Database Sync Card (Only active when logged in) */}
       {user && (
         <div style={{
           background: 'var(--bg-input)',
@@ -212,37 +181,6 @@ create index blood_sugar_readings_user_id_measured_at_idx
           )}
         </div>
       )}
-
-      {/* 3. SQL Schema Card */}
-      <div className="schema-intro" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-        <div className="intro-title">
-          <Database size={20} className="text-accent" />
-          <h3 style={{ fontSize: '14px', fontWeight: 'bold' }}>Supabase SQL Table Script</h3>
-        </div>
-        <p className="intro-text" style={{ fontSize: '11px' }}>
-          Execute this SQL in your Supabase Project dashboard to spin up your database table. RLS policies safeguard read/write access.
-        </p>
-
-        <div className="code-header" style={{ marginTop: '8px' }}>
-          <span>SQL Script</span>
-          <button className="btn-copy" onClick={copyToClipboard}>
-            {copied ? (
-              <>
-                <Check size={12} className="text-emerald mr-1" />
-                <span>Copied!</span>
-              </>
-            ) : (
-              <>
-                <Copy size={12} className="mr-1" />
-                <span>Copy SQL</span>
-              </>
-            )}
-          </button>
-        </div>
-        <pre className="code-block" style={{ maxHeight: '180px', overflowY: 'auto' }}>
-          <code>{sqlCode}</code>
-        </pre>
-      </div>
 
     </div>
   );

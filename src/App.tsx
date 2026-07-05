@@ -6,9 +6,11 @@ import {
   deleteReading, 
   getStatus,
   getStatusColor,
-  convertValue
+  convertValue,
+  loadAlerts,
+  updateAlert
 } from './db';
-import type { SugarReading, ReadingUnit } from './db';
+import type { SugarReading, ReadingUnit, InAppAlert } from './db';
 import { getSupabaseClient } from './supabase';
 import type { GoogleProfile } from './supabase';
 
@@ -16,23 +18,32 @@ import { StatsDashboard } from './components/StatsDashboard';
 import { BloodSugarChart } from './components/BloodSugarChart';
 import { LogReadingForm } from './components/LogReadingForm';
 import { HistoryList } from './components/HistoryList';
-import { SupabaseSchema } from './components/SupabaseSchema';
+import { ProfileView } from './components/ProfileView';
+import { AlertBanner } from './components/AlertBanner';
 
-import { LayoutDashboard, PlusCircle, History, Database, Droplet } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, History, User, Droplet } from 'lucide-react';
 
 function App() {
   const [readings, setReadings] = useState<SugarReading[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'log' | 'history' | 'supabase'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'log' | 'history' | 'profile'>('dashboard');
   const [preferredUnit, setPreferredUnit] = useState<ReadingUnit>('mg/dL');
   
   // Auth state management
   const [user, setUser] = useState<GoogleProfile | null>(null);
+
+  // Alerts and reminders state
+  const [alerts, setAlerts] = useState<InAppAlert[]>([]);
+  const [activeTriggeredAlert, setActiveTriggeredAlert] = useState<InAppAlert | null>(null);
+  const [snoozedAlerts, setSnoozedAlerts] = useState<{ [alertId: string]: number }>({});
 
   // 1. Initial Data and Session Setup
   useEffect(() => {
     // Load local storage readings
     const stored = loadReadings();
     setReadings(stored);
+
+    // Load alerts state
+    setAlerts(loadAlerts());
 
     // Load preferred unit
     const savedUnit = localStorage.getItem('glucose_preferred_unit') as ReadingUnit;
@@ -78,6 +89,74 @@ function App() {
       setUser(null);
     }
   }, [activeTab]); // Re-run checks when visiting settings tabs
+
+  // Background daemon checking for reminders every 10 seconds
+  useEffect(() => {
+    const checkAlarms = () => {
+      if (activeTriggeredAlert) return; // Only process one alert at a time
+
+      const now = new Date();
+      const currentHHMM = now.toTimeString().slice(0, 5); // "HH:MM"
+      const todayStr = now.toISOString().slice(0, 10);
+      const activeAlerts = loadAlerts();
+
+      for (const al of activeAlerts) {
+        if (!al.isActive) continue;
+
+        // Skip if currently in a active snooze window
+        const snoozeEnd = snoozedAlerts[al.id] || 0;
+        if (Date.now() < snoozeEnd) continue;
+
+        if (al.time === currentHHMM) {
+          if (al.type === 'meal') {
+            if (al.lastTriggeredDate !== todayStr) {
+              setActiveTriggeredAlert(al);
+              al.lastTriggeredDate = todayStr;
+              updateAlert(al);
+              setAlerts(loadAlerts());
+              break;
+            }
+          } else if (al.type === 'record') {
+            // Check if user logged a reading in the last 30 minutes
+            const lastReading = readings.length > 0 ? readings[0] : null;
+            const hasRecentLog = lastReading && (Date.now() - new Date(lastReading.measuredAt).getTime() < 30 * 60 * 1000);
+
+            if (!hasRecentLog && al.lastTriggeredDate !== todayStr) {
+              setActiveTriggeredAlert(al);
+              break;
+            }
+          }
+        }
+      }
+    };
+
+    const interval = setInterval(checkAlarms, 10000);
+    checkAlarms(); // Immediate check on load
+
+    return () => clearInterval(interval);
+  }, [alerts, readings, snoozedAlerts, activeTriggeredAlert]);
+
+  // Alert Actions
+  const handleSnoozeAlert = (alertId: string) => {
+    // Snooze for 15 minutes
+    const snoozeUntil = Date.now() + 15 * 60 * 1000;
+    setSnoozedAlerts(prev => ({
+      ...prev,
+      [alertId]: snoozeUntil
+    }));
+    setActiveTriggeredAlert(null);
+    if ('vibrate' in navigator) {
+      navigator.vibrate(20);
+    }
+  };
+
+  const handleLogNow = () => {
+    setActiveTab('log');
+    setActiveTriggeredAlert(null);
+    if ('vibrate' in navigator) {
+      navigator.vibrate(20);
+    }
+  };
 
   // 2. Change Unit Handler
   const handleUnitToggle = (unit: ReadingUnit) => {
@@ -177,6 +256,15 @@ function App() {
   const handleAddReading = (newReading: Omit<SugarReading, 'id'>) => {
     const added = addReading(newReading);
     setReadings(prev => [added, ...prev]);
+
+    // If an alert was active, clear it and mark as triggered for today
+    if (activeTriggeredAlert && activeTriggeredAlert.type === 'record') {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const updated = { ...activeTriggeredAlert, lastTriggeredDate: todayStr };
+      updateAlert(updated);
+      setActiveTriggeredAlert(null);
+      setAlerts(loadAlerts());
+    }
     
     // Redirect to dashboard tab to immediately visualize changes
     setTimeout(() => {
@@ -204,6 +292,14 @@ function App() {
 
   return (
     <>
+      {activeTriggeredAlert && (
+        <AlertBanner
+          alert={activeTriggeredAlert}
+          onSnooze={handleSnoozeAlert}
+          onLogNow={handleLogNow}
+        />
+      )}
+
       {/* Sleek App Header */}
       <header className="app-header">
         <div className="brand-section">
@@ -270,12 +366,12 @@ function App() {
                 backgroundColor: 'var(--bg-card)'
               }}
               onClick={() => {
-                setActiveTab('supabase');
+                setActiveTab('profile');
                 if ('vibrate' in navigator) {
                   navigator.vibrate(20);
                 }
               }}
-              title={`Signed in as ${user.name}. Click to view database settings.`}
+              title={`Signed in as ${user.name}. Click to view profile settings.`}
             />
           ) : (
             <button
@@ -322,13 +418,14 @@ function App() {
           />
         )}
 
-        {activeTab === 'supabase' && (
-          <SupabaseSchema 
+        {activeTab === 'profile' && (
+          <ProfileView 
             user={user}
             onLoginClick={handleTriggerRealOAuth}
             onLogoutClick={handleLogout}
             readingsCount={readings.length}
             onSyncTrigger={handleSyncReadings}
+            onAlertsChanged={() => setAlerts(loadAlerts())}
           />
         )}
       </main>
@@ -369,14 +466,14 @@ function App() {
         </button>
 
         <button
-          className={`nav-item ${activeTab === 'supabase' ? 'active' : ''}`}
-          onClick={() => setActiveTab('supabase')}
-          aria-label="View Database Integration details"
+          className={`nav-item ${activeTab === 'profile' ? 'active' : ''}`}
+          onClick={() => setActiveTab('profile')}
+          aria-label="View Profile and Cloud Sync"
         >
           <div className="nav-item-icon-wrapper">
-            <Database size={20} />
+            <User size={20} />
           </div>
-          <span>Supabase</span>
+          <span>Profile</span>
         </button>
       </nav>
     </>
