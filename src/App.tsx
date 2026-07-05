@@ -24,7 +24,7 @@ import { HistoryList } from './components/HistoryList';
 import { ProfileView } from './components/ProfileView';
 import { AlertBanner } from './components/AlertBanner';
 
-import { LayoutDashboard, PlusCircle, History, User, Droplet } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, History, User } from 'lucide-react';
 
 function App() {
   const [readings, setReadings] = useState<SugarReading[]>([]);
@@ -430,9 +430,17 @@ function App() {
       {/* Sleek App Header */}
       <header className="app-header">
         <div className="brand-section">
-          <div className="brand-logo-container">
-            <Droplet size={18} className="brand-logo-svg" fill="white" />
-          </div>
+          <img 
+            src="/logo.png" 
+            alt="GlucoSync Logo" 
+            style={{ 
+              width: '32px', 
+              height: '32px', 
+              borderRadius: '8px', 
+              objectFit: 'cover',
+              boxShadow: '0 0 15px rgba(139, 92, 246, 0.4)'
+            }} 
+          />
           <div>
             <h1 className="brand-name">GlucoSync</h1>
             <p className="brand-tagline">SMART LOG & TRACKER</p>
