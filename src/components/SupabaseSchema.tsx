@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Database, Copy, Check, RefreshCw, LogIn, LogOut, CloudLightning, Server } from 'lucide-react';
-import { getSupabaseConfig, saveSupabaseConfig, clearSupabaseConfig, resetSupabaseInstance } from '../supabase';
+import React, { useState } from 'react';
+import { Database, Copy, Check, RefreshCw, LogIn, LogOut, CloudLightning } from 'lucide-react';
+import { getSupabaseClient } from '../supabase';
 import type { GoogleProfile } from '../supabase';
 
 interface SupabaseSchemaProps {
@@ -20,53 +20,12 @@ export const SupabaseSchema: React.FC<SupabaseSchemaProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   
-  // Database configuration states
-  const [dbUrl, setDbUrl] = useState('');
-  const [dbAnonKey, setDbAnonKey] = useState('');
-  const [isConnected, setIsConnected] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'cleared'>('idle');
-  
   // Sync status states
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Load existing credentials on mount
-  useEffect(() => {
-    const config = getSupabaseConfig();
-    if (config) {
-      setDbUrl(config.url);
-      setDbAnonKey(config.anonKey);
-      setIsConnected(true);
-    }
-  }, []);
-
-  const handleSaveConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!dbUrl || !dbAnonKey) return;
-    
-    saveSupabaseConfig(dbUrl, dbAnonKey);
-    resetSupabaseInstance();
-    setIsConnected(true);
-    setSaveStatus('saved');
-    
-    if ('vibrate' in navigator) {
-      navigator.vibrate([50, 50]);
-    }
-    
-    setTimeout(() => setSaveStatus('idle'), 2000);
-  };
-
-  const handleClearConfig = () => {
-    if (window.confirm('Clear Supabase settings and return to local simulation?')) {
-      clearSupabaseConfig();
-      resetSupabaseInstance();
-      setDbUrl('');
-      setDbAnonKey('');
-      setIsConnected(false);
-      setSaveStatus('cleared');
-      setTimeout(() => setSaveStatus('idle'), 2000);
-    }
-  };
+  // Check if client is initialized from env
+  const isConnected = !!getSupabaseClient();
 
   const handleSyncClick = async () => {
     setSyncLoading(true);
@@ -153,7 +112,7 @@ create index blood_sugar_readings_user_id_measured_at_idx
               color: isConnected ? 'var(--cyan)' : 'var(--text-muted)' 
             }}
           >
-            {isConnected ? 'SUPABASE ACTIVE' : 'OFFLINE MODE (LOCAL ONLY)'}
+            {isConnected ? 'SUPABASE ACTIVE' : 'OFFLINE MODE (ENV MISSING)'}
           </span>
         </div>
 
@@ -188,10 +147,16 @@ create index blood_sugar_readings_user_id_measured_at_idx
               className="btn btn-primary btn-sm" 
               onClick={onLoginClick}
               style={{ gap: '6px', margin: '0 auto' }}
+              disabled={!isConnected}
             >
               <LogIn size={14} />
               <span>Sign in with Google</span>
             </button>
+            {!isConnected && (
+              <p className="text-xs text-red mt-2">
+                Configure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file to enable authentication.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -248,75 +213,7 @@ create index blood_sugar_readings_user_id_measured_at_idx
         </div>
       )}
 
-      {/* 3. Credentials Form Card */}
-      <div style={{
-        background: 'var(--bg-input)',
-        border: '1px solid var(--border-color)',
-        borderRadius: '12px',
-        padding: '16px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Server size={16} className="text-accent" />
-          <h4 style={{ fontSize: '13px', fontWeight: 'bold' }}>Supabase Connection Settings</h4>
-        </div>
-
-        <form onSubmit={handleSaveConfig} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div className="form-group">
-            <label className="input-label" htmlFor="db-url">SUPABASE PROJECT URL</label>
-            <input
-              id="db-url"
-              type="url"
-              value={dbUrl}
-              onChange={(e) => setDbUrl(e.target.value)}
-              placeholder="https://yourprojectid.supabase.co"
-              className="text-input font-mono text-xs"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="input-label" htmlFor="db-key">SUPABASE ANON PUBLIC KEY</label>
-            <input
-              id="db-key"
-              type="password"
-              value={dbAnonKey}
-              onChange={(e) => setDbAnonKey(e.target.value)}
-              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-              className="text-input font-mono text-xs"
-              required
-            />
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button type="submit" className="btn btn-primary btn-xs" style={{ padding: '8px 12px' }}>
-              Save Credentials
-            </button>
-            
-            {isConnected && (
-              <button 
-                type="button" 
-                className="btn btn-secondary btn-xs" 
-                onClick={handleClearConfig}
-                style={{ color: 'var(--red)', borderColor: 'rgba(239,68,68,0.2)' }}
-              >
-                Disconnect URL
-              </button>
-            )}
-          </div>
-
-          {saveStatus === 'saved' && (
-            <span className="text-xs text-emerald font-bold">✓ Credentials saved. Client re-initialized.</span>
-          )}
-          {saveStatus === 'cleared' && (
-            <span className="text-xs text-secondary">✓ Credentials removed. Operating in Offline/Demo mode.</span>
-          )}
-        </form>
-      </div>
-
-      {/* 4. SQL Schema Card */}
+      {/* 3. SQL Schema Card */}
       <div className="schema-intro" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
         <div className="intro-title">
           <Database size={20} className="text-accent" />

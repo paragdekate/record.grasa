@@ -1,10 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-export interface SupabaseConfig {
-  url: string;
-  anonKey: string;
-}
-
 export interface GoogleProfile {
   id: string;
   email: string;
@@ -12,37 +7,18 @@ export interface GoogleProfile {
   avatarUrl: string;
 }
 
-// Get saved credentials from localStorage or environment variables
-export function getSupabaseConfig(): SupabaseConfig | null {
-  const url = localStorage.getItem('supabase_project_url') || import.meta.env.VITE_SUPABASE_URL || '';
-  const anonKey = localStorage.getItem('supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-  
-  if (url && anonKey) {
-    return { url, anonKey };
-  }
-  return null;
-}
+const url = import.meta.env.VITE_SUPABASE_URL || '';
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export function saveSupabaseConfig(url: string, anonKey: string): void {
-  localStorage.setItem('supabase_project_url', url);
-  localStorage.setItem('supabase_anon_key', anonKey);
-}
-
-export function clearSupabaseConfig(): void {
-  localStorage.removeItem('supabase_project_url');
-  localStorage.removeItem('supabase_anon_key');
-}
-
-// Initialize Supabase Client dynamically
+// Initialize Supabase Client directly using environment variables
 let supabaseInstance: SupabaseClient | null = null;
 
 export function getSupabaseClient(): SupabaseClient | null {
   if (supabaseInstance) return supabaseInstance;
 
-  const config = getSupabaseConfig();
-  if (config) {
+  if (url && anonKey) {
     try {
-      supabaseInstance = createClient(config.url, config.anonKey, {
+      supabaseInstance = createClient(url, anonKey, {
         auth: {
           persistSession: true,
           autoRefreshToken: true
@@ -55,9 +31,4 @@ export function getSupabaseClient(): SupabaseClient | null {
     }
   }
   return null;
-}
-
-// Reset instance when keys are changed
-export function resetSupabaseInstance(): void {
-  supabaseInstance = null;
 }
