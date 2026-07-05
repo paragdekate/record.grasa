@@ -538,7 +538,7 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
             zIndex: 9999,
             display: 'flex',
             flexDirection: 'column',
-            padding: '16px',
+            padding: 'calc(16px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(24px + env(safe-area-inset-left, 0px))',
             boxSizing: 'border-box'
           }}
         >
