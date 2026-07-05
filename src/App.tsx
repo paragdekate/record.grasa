@@ -107,6 +107,67 @@ function App() {
         }
       };
 
+      const syncReadings = async (sbUser: any) => {
+        try {
+          const { data, error } = await supabase
+            .from('blood_sugar_readings')
+            .select('*')
+            .order('measured_at', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching cloud readings:', error);
+            return;
+          }
+
+          const localReadings = loadReadings();
+
+          if (data && data.length > 0) {
+            const sbReadings: SugarReading[] = data.map(row => ({
+              id: row.id,
+              value: row.value,
+              unit: row.unit,
+              context: row.context,
+              notes: row.notes || '',
+              measuredAt: row.measured_at
+            }));
+
+            // Merge local and cloud readings
+            const merged = [...localReadings];
+            sbReadings.forEach(c => {
+              const exists = merged.some(l => 
+                l.id === c.id || 
+                (l.measuredAt === c.measuredAt && Math.abs(l.value - c.value) < 0.01)
+              );
+              if (!exists) {
+                merged.push(c);
+              }
+            });
+
+            // Sort newest first
+            merged.sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
+
+            localStorage.setItem('blood_sugar_readings', JSON.stringify(merged));
+            setReadings(merged);
+          } else {
+            // Push local readings up
+            if (localReadings.length > 0) {
+              const rows = localReadings.map(r => ({
+                id: r.id,
+                user_id: sbUser.id,
+                value: r.value,
+                unit: r.unit,
+                context: r.context,
+                notes: r.notes || '',
+                measured_at: r.measuredAt
+              }));
+              await supabase.from('blood_sugar_readings').upsert(rows);
+            }
+          }
+        } catch (err) {
+          console.error('Cloud readings sync failed:', err);
+        }
+      };
+
       // Get current session user
       supabase.auth.getUser().then(({ data: { user: sbUser } }) => {
         if (sbUser) {
@@ -117,6 +178,7 @@ function App() {
             avatarUrl: sbUser.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${sbUser.id}`
           });
           syncAlerts(sbUser);
+          syncReadings(sbUser);
         } else {
           setUser(null);
         }
@@ -132,8 +194,13 @@ function App() {
             avatarUrl: session.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${session.user.id}`
           });
           syncAlerts(session.user);
+          syncReadings(session.user);
         } else {
           setUser(null);
+          setReadings([]);
+          setAlerts([]);
+          localStorage.removeItem('blood_sugar_readings');
+          localStorage.removeItem('blood_sugar_alerts');
         }
       });
 
@@ -278,6 +345,10 @@ function App() {
       await supabase.auth.signOut();
     }
     setUser(null);
+    setReadings([]);
+    setAlerts([]);
+    localStorage.removeItem('blood_sugar_readings');
+    localStorage.removeItem('blood_sugar_alerts');
     if ('vibrate' in navigator) {
       navigator.vibrate(40);
     }
@@ -312,6 +383,7 @@ function App() {
     if (supabase) {
       try {
         const rows = readings.map(r => ({
+          id: r.id,
           user_id: user.id,
           value: r.value,
           unit: r.unit,
@@ -320,10 +392,10 @@ function App() {
           measured_at: r.measuredAt
         }));
 
-        // Push all records to the Supabase table (insert rows)
+        // Push all records to the Supabase table (upsert rows)
         const { error } = await supabase
           .from('blood_sugar_readings')
-          .insert(rows);
+          .upsert(rows);
 
         if (error) {
           console.error('Supabase insert error:', error);
@@ -375,9 +447,27 @@ function App() {
   };
 
   // 5. CRUD Bindings
-  const handleAddReading = (newReading: Omit<SugarReading, 'id'>) => {
+  const handleAddReading = async (newReading: Omit<SugarReading, 'id'>) => {
     const added = addReading(newReading);
     setReadings(prev => [added, ...prev]);
+
+    // Real-time Cloud Sync
+    const supabase = getSupabaseClient();
+    if (supabase && user) {
+      try {
+        await supabase.from('blood_sugar_readings').upsert({
+          id: added.id,
+          user_id: user.id,
+          value: added.value,
+          unit: added.unit,
+          context: added.context,
+          notes: added.notes || '',
+          measured_at: added.measuredAt
+        });
+      } catch (e) {
+        console.error('Failed to sync new reading to cloud:', e);
+      }
+    }
 
     // If an alert was active, clear it and mark as triggered for today
     if (activeTriggeredAlert && activeTriggeredAlert.type === 'record') {
@@ -394,14 +484,42 @@ function App() {
     }, 1000);
   };
 
-  const handleUpdateReading = (updated: SugarReading) => {
+  const handleUpdateReading = async (updated: SugarReading) => {
     updateReading(updated);
     setReadings(prev => prev.map(r => r.id === updated.id ? updated : r));
+
+    // Real-time Cloud Sync
+    const supabase = getSupabaseClient();
+    if (supabase && user) {
+      try {
+        await supabase.from('blood_sugar_readings').upsert({
+          id: updated.id,
+          user_id: user.id,
+          value: updated.value,
+          unit: updated.unit,
+          context: updated.context,
+          notes: updated.notes || '',
+          measured_at: updated.measuredAt
+        });
+      } catch (e) {
+        console.error('Failed to sync updated reading to cloud:', e);
+      }
+    }
   };
 
-  const handleDeleteReading = (id: string) => {
+  const handleDeleteReading = async (id: string) => {
     deleteReading(id);
     setReadings(prev => prev.filter(r => r.id !== id));
+
+    // Real-time Cloud Sync
+    const supabase = getSupabaseClient();
+    if (supabase && user) {
+      try {
+        await supabase.from('blood_sugar_readings').delete().eq('id', id);
+      } catch (e) {
+        console.error('Failed to sync reading deletion to cloud:', e);
+      }
+    }
   };
 
   // --- Alerts CRUD Bindings (with Supabase Sync) ---
