@@ -69,6 +69,9 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
     }
   };
 
+  // Sort alerts chronologically (ascending HH:MM)
+  const sortedAlerts = [...alerts].sort((a, b) => a.time.localeCompare(b.time));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       
@@ -248,7 +251,7 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
 
       {/* List of Alerts */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {alerts.length === 0 ? (
+        {sortedAlerts.length === 0 ? (
           <div style={{
             textAlign: 'center',
             padding: '16px',
@@ -261,7 +264,7 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
             No alerts set. Tap "Add Alert" to schedule one.
           </div>
         ) : (
-          alerts.map((al) => (
+          sortedAlerts.map((al) => (
             <div 
               key={al.id}
               style={{
