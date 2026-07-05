@@ -175,7 +175,41 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
             />
           )}
 
-          {/* 2. Grid lines & Y Axis labels */}
+          {/* 2. Axis Lines */}
+          <line
+            x1={paddingLeft}
+            y1={paddingTop}
+            x2={paddingLeft}
+            y2={height - paddingBottom}
+            stroke="var(--border-color)"
+            strokeWidth="1"
+            opacity="0.4"
+          />
+          <line
+            x1={paddingLeft}
+            y1={height - paddingBottom}
+            x2={width - paddingRight}
+            y2={height - paddingBottom}
+            stroke="var(--border-color)"
+            strokeWidth="1"
+            opacity="0.4"
+          />
+
+          {/* Y-Axis Unit Label at top */}
+          <text
+            x={paddingLeft - 8}
+            y={paddingTop - 6}
+            textAnchor="end"
+            fontSize="8"
+            fontWeight="800"
+            fill="var(--text-secondary)"
+            opacity="0.7"
+            letterSpacing="0.5"
+          >
+            {unit.toUpperCase()}
+          </text>
+
+          {/* Grid lines, Y Axis labels & Ticks */}
           {gridLines.map((lineVal) => {
             const yPos = getY(lineVal);
             if (yPos < paddingTop || yPos > height - paddingBottom) return null;
@@ -192,8 +226,17 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
                   x2={width - paddingRight}
                   y2={yPos}
                   stroke="var(--border)"
-                  strokeOpacity="0.4"
+                  strokeOpacity="0.3"
                   strokeDasharray="4,4"
+                />
+                <line
+                  x1={paddingLeft - 4}
+                  y1={yPos}
+                  x2={paddingLeft}
+                  y2={yPos}
+                  stroke="var(--border-color)"
+                  strokeWidth="1"
+                  opacity="0.5"
                 />
                 <text
                   x={paddingLeft - 8}
@@ -302,24 +345,40 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
             );
           })}
 
-          {/* 6. X Axis Labels (dates) */}
+          {/* 6. X Axis Labels (dates) & Ticks */}
           {chartData.length > 0 && (() => {
             // Decimate X-axis labels to avoid crowding
             const stride = Math.max(1, Math.floor(chartData.length / 5));
             return chartData.map((d, idx) => {
-              if (idx % stride !== 0 && idx !== chartData.length - 1) return null;
+              const xPos = getX(idx);
+              const isLabelVisible = idx % stride === 0 || idx === chartData.length - 1;
+              
               return (
-                <text
-                  key={`lbl-${d.id}`}
-                  x={getX(idx)}
-                  y={height - 12}
-                  textAnchor="middle"
-                  fontSize="9"
-                  fill="var(--text)"
-                  opacity="0.6"
-                >
-                  {formatDate(d.measuredAt)}
-                </text>
+                <g key={`lbl-grp-${d.id}`}>
+                  {/* X Axis Tick */}
+                  <line
+                    x1={xPos}
+                    y1={height - paddingBottom}
+                    x2={xPos}
+                    y2={height - paddingBottom + 4}
+                    stroke="var(--border-color)"
+                    strokeWidth="1"
+                    opacity="0.5"
+                  />
+                  
+                  {isLabelVisible && (
+                    <text
+                      x={xPos}
+                      y={height - 12}
+                      textAnchor="middle"
+                      fontSize="9"
+                      fill="var(--text)"
+                      opacity="0.6"
+                    >
+                      {formatDate(d.measuredAt)}
+                    </text>
+                  )}
+                </g>
               );
             });
           })()}
