@@ -434,11 +434,11 @@ function App() {
             src="/logo.png" 
             alt="GlucoSync Logo" 
             style={{ 
-              width: '32px', 
-              height: '32px', 
-              borderRadius: '8px', 
+              width: '46px', 
+              height: '46px', 
+              borderRadius: '10px', 
               objectFit: 'cover',
-              boxShadow: '0 0 15px rgba(139, 92, 246, 0.4)'
+              boxShadow: '-5px -5px 15px rgba(139, 92, 246, 0.45), 5px 5px 15px rgba(6, 182, 212, 0.2)'
             }} 
           />
           <div>
