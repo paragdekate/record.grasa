@@ -1,10 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Configuration keys for local storage overrides
-const URL_KEY = 'supabase_project_url';
-const ANON_KEY = 'supabase_anon_key';
-const USER_KEY = 'supabase_mock_user';
-
 export interface SupabaseConfig {
   url: string;
   anonKey: string;
@@ -19,8 +14,8 @@ export interface GoogleProfile {
 
 // Get saved credentials from localStorage or environment variables
 export function getSupabaseConfig(): SupabaseConfig | null {
-  const url = localStorage.getItem(URL_KEY) || import.meta.env.VITE_SUPABASE_URL || '';
-  const anonKey = localStorage.getItem(ANON_KEY) || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+  const url = localStorage.getItem('supabase_project_url') || import.meta.env.VITE_SUPABASE_URL || '';
+  const anonKey = localStorage.getItem('supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '';
   
   if (url && anonKey) {
     return { url, anonKey };
@@ -29,13 +24,13 @@ export function getSupabaseConfig(): SupabaseConfig | null {
 }
 
 export function saveSupabaseConfig(url: string, anonKey: string): void {
-  localStorage.setItem(URL_KEY, url);
-  localStorage.setItem(ANON_KEY, anonKey);
+  localStorage.setItem('supabase_project_url', url);
+  localStorage.setItem('supabase_anon_key', anonKey);
 }
 
 export function clearSupabaseConfig(): void {
-  localStorage.removeItem(URL_KEY);
-  localStorage.removeItem(ANON_KEY);
+  localStorage.removeItem('supabase_project_url');
+  localStorage.removeItem('supabase_anon_key');
 }
 
 // Initialize Supabase Client dynamically
@@ -65,23 +60,4 @@ export function getSupabaseClient(): SupabaseClient | null {
 // Reset instance when keys are changed
 export function resetSupabaseInstance(): void {
   supabaseInstance = null;
-}
-
-// Mock auth management
-export function getMockUser(): GoogleProfile | null {
-  const stored = localStorage.getItem(USER_KEY);
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch (e) {
-    return null;
-  }
-}
-
-export function setMockUser(user: GoogleProfile | null): void {
-  if (user) {
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(USER_KEY);
-  }
 }

@@ -1,17 +1,15 @@
 import { useState, useEffect } from 'react';
 import { 
   loadReadings, 
-  saveReadings, 
   addReading, 
   updateReading, 
   deleteReading, 
-  generateMockReadings,
   getStatus,
   getStatusColor,
   convertValue
 } from './db';
 import type { SugarReading, ReadingUnit } from './db';
-import { getSupabaseClient, getMockUser, setMockUser, getSupabaseConfig } from './supabase';
+import { getSupabaseClient } from './supabase';
 import type { GoogleProfile } from './supabase';
 
 import { StatsDashboard } from './components/StatsDashboard';
@@ -19,7 +17,6 @@ import { BloodSugarChart } from './components/BloodSugarChart';
 import { LogReadingForm } from './components/LogReadingForm';
 import { HistoryList } from './components/HistoryList';
 import { SupabaseSchema } from './components/SupabaseSchema';
-import { GoogleLoginModal } from './components/GoogleLoginModal';
 
 import { LayoutDashboard, PlusCircle, History, Database, Droplet } from 'lucide-react';
 
@@ -30,12 +27,10 @@ function App() {
   
   // Auth state management
   const [user, setUser] = useState<GoogleProfile | null>(null);
-  const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
-  const [isRealSupabase, setIsRealSupabase] = useState<boolean>(false);
 
   // 1. Initial Data and Session Setup
   useEffect(() => {
-    // Load local storage readings (pre-populates if empty)
+    // Load local storage readings
     const stored = loadReadings();
     setReadings(stored);
 
@@ -45,11 +40,7 @@ function App() {
       setPreferredUnit(savedUnit);
     }
 
-    // Check if real Supabase keys exist
-    const config = getSupabaseConfig();
-    setIsRealSupabase(!!config);
-
-    // Initialize Auth (Real vs Mock)
+    // Initialize Auth Session
     const supabase = getSupabaseClient();
     if (supabase) {
       // Get current session user
@@ -84,9 +75,7 @@ function App() {
         subscription.unsubscribe();
       };
     } else {
-      // Fallback to local storage mock user
-      const mock = getMockUser();
-      setUser(mock);
+      setUser(null);
     }
   }, [activeTab]); // Re-run checks when visiting settings tabs
 
@@ -100,17 +89,11 @@ function App() {
   };
 
   // 3. Login / Logout Handlers
-  const handleLoginSuccess = (profile: GoogleProfile) => {
-    setMockUser(profile);
-    setUser(profile);
-  };
-
   const handleLogout = async () => {
     const supabase = getSupabaseClient();
     if (supabase) {
       await supabase.auth.signOut();
     }
-    setMockUser(null);
     setUser(null);
     if ('vibrate' in navigator) {
       navigator.vibrate(40);
@@ -131,6 +114,8 @@ function App() {
       } catch (e: any) {
         alert(e.message || 'An error occurred during Google OAuth redirect.');
       }
+    } else {
+      alert('Supabase credentials not configured. Please input your Project URL and Anon Key in the Supabase settings tab first.');
     }
   };
 
@@ -142,7 +127,6 @@ function App() {
     }
 
     if (supabase) {
-      // ⚠️ REAL SYNC: Upload to supabase table
       try {
         const rows = readings.map(r => ({
           user_id: user.id,
@@ -181,12 +165,10 @@ function App() {
         return { success: false, count: 0, message: e.message || 'Network sync error.' };
       }
     } else {
-      // 🧪 MOCK SYNC: Simulation
-      await new Promise(resolve => setTimeout(resolve, 1500));
       return { 
-        success: true, 
-        count: readings.length, 
-        message: `Synced ${readings.length} readings to cloud (Simulation Mode: Mock Cloud Storage updated).` 
+        success: false, 
+        count: 0, 
+        message: 'Database connection config is missing. Please save credentials in the Supabase tab.' 
       };
     }
   };
@@ -212,14 +194,6 @@ function App() {
     setReadings(prev => prev.filter(r => r.id !== id));
   };
 
-  const handleResetMockData = () => {
-    if (window.confirm('This will replace your current readings with standard mock data for the last 10 days. Continue?')) {
-      const mock = generateMockReadings();
-      saveReadings(mock);
-      setReadings(mock);
-    }
-  };
-
   // 6. Header display helpers
   const latestReading = readings.length > 0 ? readings[0] : null;
   const latestStatus = latestReading ? getStatus(latestReading.value) : null;
@@ -230,15 +204,6 @@ function App() {
 
   return (
     <>
-      {showLoginModal && (
-        <GoogleLoginModal
-          onClose={() => setShowLoginModal(false)}
-          onLoginSuccess={handleLoginSuccess}
-          isRealSupabase={isRealSupabase}
-          onTriggerRealOAuth={handleTriggerRealOAuth}
-        />
-      )}
-
       {/* Sleek App Header */}
       <header className="app-header">
         <div className="brand-section">
@@ -315,7 +280,7 @@ function App() {
           ) : (
             <button
               className="btn btn-secondary btn-xs"
-              onClick={() => setShowLoginModal(true)}
+              onClick={handleTriggerRealOAuth}
               style={{ padding: '6px 10px', borderRadius: '14px', fontSize: '10px', fontWeight: 'bold' }}
             >
               Sign In
@@ -337,7 +302,6 @@ function App() {
             <StatsDashboard 
               readings={readings} 
               unit={preferredUnit} 
-              onResetMockData={handleResetMockData}
             />
           </>
         )}
@@ -361,7 +325,7 @@ function App() {
         {activeTab === 'supabase' && (
           <SupabaseSchema 
             user={user}
-            onLoginClick={() => setShowLoginModal(true)}
+            onLoginClick={handleTriggerRealOAuth}
             onLogoutClick={handleLogout}
             readingsCount={readings.length}
             onSyncTrigger={handleSyncReadings}

@@ -1,15 +1,14 @@
 import React from 'react';
 import { calculateStats, convertValue, getStatusColor } from '../db';
 import type { SugarReading, ReadingUnit } from '../db';
-import { Award, TrendingUp, TrendingDown, RefreshCw, BarChart2 } from 'lucide-react';
+import { Award, TrendingUp, TrendingDown, BarChart2 } from 'lucide-react';
 
 interface StatsDashboardProps {
   readings: SugarReading[];
   unit: ReadingUnit;
-  onResetMockData: () => void;
 }
 
-export const StatsDashboard: React.FC<StatsDashboardProps> = ({ readings, unit, onResetMockData }) => {
+export const StatsDashboard: React.FC<StatsDashboardProps> = ({ readings, unit }) => {
   const stats = calculateStats(readings);
 
   // Helper to convert internal stats (mg/dL) to preferred unit
@@ -197,9 +196,6 @@ export const StatsDashboard: React.FC<StatsDashboardProps> = ({ readings, unit, 
       {/* Bottom utility tools */}
       <div className="dashboard-utility-bar mt-2">
         <span className="text-xs text-muted">Showing stats computed on device db ({stats.totalCount} readings).</span>
-        <button className="btn btn-link btn-xs" onClick={onResetMockData}>
-          <RefreshCw size={12} className="mr-1" /> Re-populate Mock Data
-        </button>
       </div>
     </div>
   );

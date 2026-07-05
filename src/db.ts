@@ -76,67 +76,10 @@ export function getContextLabel(context: ReadingContext): string {
   }
 }
 
-// Generate realistic mock data for the last 7 days
-export function generateMockReadings(): SugarReading[] {
-  const readings: SugarReading[] = [];
-  const now = new Date();
-  
-  // Contexts and typical values (mg/dL)
-  const contextProfiles = [
-    { context: 'fasting' as ReadingContext, base: 90, variance: 15, hour: 7 },
-    { context: 'after_breakfast' as ReadingContext, base: 125, variance: 25, hour: 9 },
-    { context: 'before_lunch' as ReadingContext, base: 95, variance: 15, hour: 13 },
-    { context: 'after_lunch' as ReadingContext, base: 135, variance: 30, hour: 15 },
-    { context: 'before_dinner' as ReadingContext, base: 100, variance: 15, hour: 19 },
-    { context: 'after_dinner' as ReadingContext, base: 140, variance: 35, hour: 21 },
-    { context: 'bedtime' as ReadingContext, base: 110, variance: 20, hour: 23 },
-  ];
-
-  for (let i = 10; i >= 0; i--) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - i);
-    
-    // Choose 3-4 random meals/readings per day to make it look realistic
-    const numReadings = 3 + Math.floor(Math.random() * 2);
-    const shuffledProfiles = [...contextProfiles].sort(() => 0.5 - Math.random());
-    const selectedProfiles = shuffledProfiles.slice(0, numReadings);
-    
-    // Sort profiles chronologically by hour
-    selectedProfiles.sort((a, b) => a.hour - b.hour);
-
-    selectedProfiles.forEach(profile => {
-      const measuredTime = new Date(date);
-      measuredTime.setHours(profile.hour, Math.floor(Math.random() * 60), 0, 0);
-      
-      // Calculate a randomized blood sugar value based on the context profile
-      // Occasionally introduce a higher or lower reading for realistic tracking
-      const isOutlier = Math.random() < 0.15;
-      const outlierFactor = isOutlier ? (Math.random() > 0.5 ? 1.5 : 0.7) : 1.0;
-      let rawValue = (profile.base + (Math.random() * 2 - 1) * profile.variance) * outlierFactor;
-      rawValue = Math.max(45, Math.min(320, rawValue)); // Keep within realistic extremes
-      const value = Math.round(rawValue);
-
-      readings.push({
-        id: crypto.randomUUID(),
-        value,
-        unit: 'mg/dL',
-        context: profile.context,
-        notes: isOutlier ? (outlierFactor > 1 ? 'Had a large sweet dessert' : 'Felt a bit shaky/dizzy') : '',
-        measuredAt: measuredTime.toISOString()
-      });
-    });
-  }
-
-  // Sort all readings chronologically descending (newest first)
-  return readings.sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
-}
-
 export function loadReadings(): SugarReading[] {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (!stored) {
-    const mock = generateMockReadings();
-    saveReadings(mock);
-    return mock;
+    return [];
   }
   try {
     return JSON.parse(stored);

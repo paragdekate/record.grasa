@@ -153,7 +153,7 @@ create index blood_sugar_readings_user_id_measured_at_idx
               color: isConnected ? 'var(--cyan)' : 'var(--text-muted)' 
             }}
           >
-            {isConnected ? 'SUPABASE MODE' : 'LOCAL SIMULATOR'}
+            {isConnected ? 'SUPABASE ACTIVE' : 'OFFLINE MODE (LOCAL ONLY)'}
           </span>
         </div>
 
