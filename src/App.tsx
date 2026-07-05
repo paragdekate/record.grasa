@@ -8,7 +8,10 @@ import {
   getStatusColor,
   convertValue,
   loadAlerts,
-  updateAlert
+  updateAlert,
+  addAlert,
+  deleteAlert,
+  saveAlerts
 } from './db';
 import type { SugarReading, ReadingUnit, InAppAlert } from './db';
 import { getSupabaseClient } from './supabase';
@@ -54,6 +57,51 @@ function App() {
     // Initialize Auth Session
     const supabase = getSupabaseClient();
     if (supabase) {
+      const syncAlerts = async (sbUser: any) => {
+        try {
+          const { data, error } = await supabase
+            .from('blood_sugar_alerts')
+            .select('*');
+
+          if (error) {
+            console.error('Error fetching cloud alerts:', error);
+            return;
+          }
+
+          if (data && data.length > 0) {
+            const sbAlerts: InAppAlert[] = data.map(row => ({
+              id: row.id,
+              type: row.type,
+              time: row.time,
+              label: row.label,
+              isActive: row.is_active,
+              mealType: row.meal_type || undefined,
+              lastTriggeredDate: row.last_triggered_date || undefined
+            }));
+            saveAlerts(sbAlerts);
+            setAlerts(sbAlerts);
+          } else {
+            // Push local alerts up
+            const local = loadAlerts();
+            if (local.length > 0) {
+              const rows = local.map(al => ({
+                id: al.id,
+                user_id: sbUser.id,
+                type: al.type,
+                time: al.time,
+                label: al.label,
+                is_active: al.isActive,
+                meal_type: al.mealType,
+                last_triggered_date: al.lastTriggeredDate
+              }));
+              await supabase.from('blood_sugar_alerts').insert(rows);
+            }
+          }
+        } catch (err) {
+          console.error('Cloud alerts sync failed:', err);
+        }
+      };
+
       // Get current session user
       supabase.auth.getUser().then(({ data: { user: sbUser } }) => {
         if (sbUser) {
@@ -63,6 +111,7 @@ function App() {
             name: sbUser.user_metadata.full_name || sbUser.user_metadata.name || sbUser.email?.split('@')[0] || 'User',
             avatarUrl: sbUser.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${sbUser.id}`
           });
+          syncAlerts(sbUser);
         } else {
           setUser(null);
         }
@@ -77,6 +126,7 @@ function App() {
             name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
             avatarUrl: session.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${session.user.id}`
           });
+          syncAlerts(session.user);
         } else {
           setUser(null);
         }
@@ -235,10 +285,26 @@ function App() {
           return { success: false, count: 0, message: `Database error: ${error.message}` };
         }
 
+        // Sync all local alerts up to Supabase alerts table
+        const alertRows = alerts.map(al => ({
+          id: al.id,
+          user_id: user.id,
+          type: al.type,
+          time: al.time,
+          label: al.label,
+          is_active: al.isActive,
+          meal_type: al.mealType,
+          last_triggered_date: al.lastTriggeredDate
+        }));
+
+        await supabase
+          .from('blood_sugar_alerts')
+          .upsert(alertRows);
+
         return { 
           success: true, 
           count: rows.length, 
-          message: `Successfully synchronized ${rows.length} readings to your live Supabase DB!` 
+          message: `Successfully synchronized ${rows.length} readings and ${alertRows.length} alerts to your live Supabase DB!` 
         };
       } catch (e: any) {
         return { success: false, count: 0, message: e.message || 'Network sync error.' };
@@ -280,6 +346,67 @@ function App() {
   const handleDeleteReading = (id: string) => {
     deleteReading(id);
     setReadings(prev => prev.filter(r => r.id !== id));
+  };
+
+  // --- Alerts CRUD Bindings (with Supabase Sync) ---
+  const handleAddAlert = async (alert: Omit<InAppAlert, 'id'>) => {
+    const added = addAlert(alert);
+    setAlerts(prev => [...prev, added]);
+
+    const supabase = getSupabaseClient();
+    if (supabase && user) {
+      try {
+        await supabase.from('blood_sugar_alerts').insert({
+          id: added.id,
+          user_id: user.id,
+          type: added.type,
+          time: added.time,
+          label: added.label,
+          is_active: added.isActive,
+          meal_type: added.mealType,
+          last_triggered_date: added.lastTriggeredDate
+        });
+      } catch (e) {
+        console.error('Failed to sync new alert to cloud:', e);
+      }
+    }
+  };
+
+  const handleUpdateAlert = async (updated: InAppAlert) => {
+    updateAlert(updated);
+    setAlerts(prev => prev.map(a => a.id === updated.id ? updated : a));
+
+    const supabase = getSupabaseClient();
+    if (supabase && user) {
+      try {
+        await supabase.from('blood_sugar_alerts').upsert({
+          id: updated.id,
+          user_id: user.id,
+          type: updated.type,
+          time: updated.time,
+          label: updated.label,
+          is_active: updated.isActive,
+          meal_type: updated.mealType,
+          last_triggered_date: updated.lastTriggeredDate
+        });
+      } catch (e) {
+        console.error('Failed to sync alert update to cloud:', e);
+      }
+    }
+  };
+
+  const handleDeleteAlert = async (id: string) => {
+    deleteAlert(id);
+    setAlerts(prev => prev.filter(a => a.id !== id));
+
+    const supabase = getSupabaseClient();
+    if (supabase && user) {
+      try {
+        await supabase.from('blood_sugar_alerts').delete().eq('id', id);
+      } catch (e) {
+        console.error('Failed to sync alert deletion to cloud:', e);
+      }
+    }
   };
 
   // 6. Header display helpers
@@ -425,7 +552,10 @@ function App() {
             onLogoutClick={handleLogout}
             readingsCount={readings.length}
             onSyncTrigger={handleSyncReadings}
-            onAlertsChanged={() => setAlerts(loadAlerts())}
+            alerts={alerts}
+            onAddAlert={handleAddAlert}
+            onUpdateAlert={handleUpdateAlert}
+            onDeleteAlert={handleDeleteAlert}
           />
         )}
       </main>

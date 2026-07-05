@@ -3,6 +3,7 @@ import { RefreshCw, LogIn, LogOut, CloudLightning, User, Check } from 'lucide-re
 import { getSupabaseClient } from '../supabase';
 import type { GoogleProfile } from '../supabase';
 import { AlertsManager } from './AlertsManager';
+import type { InAppAlert } from '../db';
 
 interface ProfileViewProps {
   user: GoogleProfile | null;
@@ -10,7 +11,10 @@ interface ProfileViewProps {
   onLogoutClick: () => void;
   readingsCount: number;
   onSyncTrigger: () => Promise<{ success: boolean; count: number; message: string }>;
-  onAlertsChanged: () => void;
+  alerts: InAppAlert[];
+  onAddAlert: (alert: Omit<InAppAlert, 'id'>) => void;
+  onUpdateAlert: (alert: InAppAlert) => void;
+  onDeleteAlert: (id: string) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -19,7 +23,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onLogoutClick,
   readingsCount,
   onSyncTrigger,
-  onAlertsChanged
+  alerts,
+  onAddAlert,
+  onUpdateAlert,
+  onDeleteAlert
 }) => {
   // Sync status states
   const [syncLoading, setSyncLoading] = useState(false);
@@ -127,7 +134,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         borderRadius: '12px',
         padding: '16px'
       }}>
-        <AlertsManager onAlertsChanged={onAlertsChanged} />
+        <AlertsManager 
+          alerts={alerts}
+          onAddAlert={onAddAlert}
+          onUpdateAlert={onUpdateAlert}
+          onDeleteAlert={onDeleteAlert}
+        />
       </div>
 
       {/* 3. Database Sync Card (Only active when logged in) */}

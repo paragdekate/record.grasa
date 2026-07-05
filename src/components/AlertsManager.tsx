@@ -1,14 +1,20 @@
 import React, { useState } from 'react';
-import { loadAlerts, addAlert, updateAlert, deleteAlert } from '../db';
 import type { InAppAlert } from '../db';
 import { Bell, BellOff, Clock, Plus, Trash2, X, Utensils, AlertTriangle } from 'lucide-react';
 
 interface AlertsManagerProps {
-  onAlertsChanged: () => void;
+  alerts: InAppAlert[];
+  onAddAlert: (alert: Omit<InAppAlert, 'id'>) => void;
+  onUpdateAlert: (alert: InAppAlert) => void;
+  onDeleteAlert: (id: string) => void;
 }
 
-export const AlertsManager: React.FC<AlertsManagerProps> = ({ onAlertsChanged }) => {
-  const [alerts, setAlerts] = useState<InAppAlert[]>(loadAlerts());
+export const AlertsManager: React.FC<AlertsManagerProps> = ({
+  alerts,
+  onAddAlert,
+  onUpdateAlert,
+  onDeleteAlert
+}) => {
   const [showAddForm, setShowAddForm] = useState(false);
   
   // New alert form states
@@ -17,16 +23,8 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({ onAlertsChanged })
   const [type, setType] = useState<'meal' | 'record'>('meal');
   const [mealType, setMealType] = useState<Required<InAppAlert>['mealType']>('breakfast');
 
-  const reloadAlerts = () => {
-    const list = loadAlerts();
-    setAlerts(list);
-    onAlertsChanged(); // Notify App parent container to reload background alarms
-  };
-
   const handleToggleActive = (alert: InAppAlert) => {
-    const updated = { ...alert, isActive: !alert.isActive };
-    updateAlert(updated);
-    reloadAlerts();
+    onUpdateAlert({ ...alert, isActive: !alert.isActive });
     if ('vibrate' in navigator) {
       navigator.vibrate(15);
     }
@@ -34,8 +32,7 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({ onAlertsChanged })
 
   const handleDelete = (id: string) => {
     if (window.confirm('Delete this alert?')) {
-      deleteAlert(id);
-      reloadAlerts();
+      onDeleteAlert(id);
       if ('vibrate' in navigator) {
         navigator.vibrate(50);
       }
@@ -48,9 +45,9 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({ onAlertsChanged })
 
     const newLabel = label.trim() || (type === 'meal' 
       ? `${mealType.charAt(0).toUpperCase() + mealType.slice(1)} Glucose Check` 
-      : ' Glucose Logging Reminder');
+      : 'Glucose Logging Reminder');
 
-    addAlert({
+    onAddAlert({
       type,
       time,
       label: newLabel,
@@ -62,7 +59,6 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({ onAlertsChanged })
     setLabel('');
     setTime('08:00');
     setShowAddForm(false);
-    reloadAlerts();
 
     if ('vibrate' in navigator) {
       navigator.vibrate([40, 40]);
@@ -220,7 +216,7 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({ onAlertsChanged })
             fontSize: '11px',
             color: 'var(--text-secondary)'
           }}>
-            No alerts set. Tapping "Add Alert" to schedule one.
+            No alerts set. Tap "Add Alert" to schedule one.
           </div>
         ) : (
           alerts.map((al) => (
