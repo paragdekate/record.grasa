@@ -183,6 +183,8 @@ export interface InAppAlert {
   isActive: boolean;
   mealType?: 'breakfast' | 'lunch' | 'dinner' | 'bedtime' | 'other';
   lastTriggeredDate?: string; // Format: "YYYY-MM-DD" to avoid repeating same alert within same day
+  frequency?: 'daily' | 'alternate'; // 'daily' or 'alternate'
+  startDate?: string; // "YYYY-MM-DD"
 }
 
 const ALERTS_KEY = 'blood_sugar_alerts';
@@ -234,14 +236,18 @@ export function loadAlerts(): InAppAlert[] {
         time: '08:00',
         label: 'Breakfast Glucose Check',
         isActive: true,
-        mealType: 'breakfast'
+        mealType: 'breakfast',
+        frequency: 'daily',
+        startDate: new Date().toISOString().slice(0, 10)
       },
       {
         id: 'a-2',
         type: 'record',
         time: '09:00',
         label: 'Morning Logging Reminder',
-        isActive: false
+        isActive: false,
+        frequency: 'daily',
+        startDate: new Date().toISOString().slice(0, 10)
       }
     ];
     saveAlerts(defaults);

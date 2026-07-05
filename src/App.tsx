@@ -38,6 +38,7 @@ function App() {
   const [alerts, setAlerts] = useState<InAppAlert[]>([]);
   const [activeTriggeredAlert, setActiveTriggeredAlert] = useState<InAppAlert | null>(null);
   const [snoozedAlerts, setSnoozedAlerts] = useState<{ [alertId: string]: number }>({});
+  const [skippedAlertToast, setSkippedAlertToast] = useState<string | null>(null);
 
   // 1. Initial Data and Session Setup
   useEffect(() => {
@@ -76,7 +77,9 @@ function App() {
               label: row.label,
               isActive: row.is_active,
               mealType: row.meal_type || undefined,
-              lastTriggeredDate: row.last_triggered_date || undefined
+              lastTriggeredDate: row.last_triggered_date || undefined,
+              frequency: row.frequency || 'daily',
+              startDate: row.start_date || new Date().toISOString().slice(0, 10)
             }));
             saveAlerts(sbAlerts);
             setAlerts(sbAlerts);
@@ -92,7 +95,9 @@ function App() {
                 label: al.label,
                 is_active: al.isActive,
                 meal_type: al.mealType,
-                last_triggered_date: al.lastTriggeredDate
+                last_triggered_date: al.lastTriggeredDate,
+                frequency: al.frequency || 'daily',
+                start_date: al.startDate || new Date().toISOString().slice(0, 10)
               }));
               await supabase.from('blood_sugar_alerts').insert(rows);
             }
@@ -142,39 +147,88 @@ function App() {
 
   // Background daemon checking for reminders every 10 seconds
   useEffect(() => {
+    const isTriggerDay = (startDateStr?: string, freq?: 'daily' | 'alternate'): boolean => {
+      if (!startDateStr || freq === 'daily') return true;
+      try {
+        const start = new Date(startDateStr);
+        start.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const diffTime = today.getTime() - start.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        return diffDays >= 0 && diffDays % 2 === 0;
+      } catch (e) {
+        return true;
+      }
+    };
+
     const checkAlarms = () => {
       if (activeTriggeredAlert) return; // Only process one alert at a time
 
       const now = new Date();
       const currentHHMM = now.toTimeString().slice(0, 5); // "HH:MM"
       const todayStr = now.toISOString().slice(0, 10);
+      const todayDateString = now.toLocaleDateString();
+
       const activeAlerts = loadAlerts();
+
+      // Check if user logged a reading today (current calendar day local time)
+      const hasLoggedToday = readings.some(r => {
+        const logDate = new Date(r.measuredAt).toLocaleDateString();
+        return logDate === todayDateString;
+      });
 
       for (const al of activeAlerts) {
         if (!al.isActive) continue;
 
-        // Skip if currently in a active snooze window
+        // Skip if currently in an active snooze window
         const snoozeEnd = snoozedAlerts[al.id] || 0;
         if (Date.now() < snoozeEnd) continue;
 
-        if (al.time === currentHHMM) {
+        if (al.time === currentHHMM && al.lastTriggeredDate !== todayStr) {
+          // Check if it is a valid trigger day based on start date and frequency
+          const isTodayTriggerDay = isTriggerDay(al.startDate, al.frequency);
+          if (!isTodayTriggerDay) continue;
+
           if (al.type === 'meal') {
-            if (al.lastTriggeredDate !== todayStr) {
-              setActiveTriggeredAlert(al);
+            setActiveTriggeredAlert(al);
+            al.lastTriggeredDate = todayStr;
+            updateAlert(al);
+            setAlerts(loadAlerts());
+            break;
+          } else if (al.type === 'record') {
+            if (hasLoggedToday) {
+              // SMART SKIP LOGIC: Mark as triggered for today and skip alarm
               al.lastTriggeredDate = todayStr;
               updateAlert(al);
               setAlerts(loadAlerts());
-              break;
-            }
-          } else if (al.type === 'record') {
-            // Check if user logged a reading in the last 30 minutes
-            const lastReading = readings.length > 0 ? readings[0] : null;
-            const hasRecentLog = lastReading && (Date.now() - new Date(lastReading.measuredAt).getTime() < 30 * 60 * 1000);
+              
+              // Display gentle notification toast
+              setSkippedAlertToast(`"${al.label}" skipped because you already logged your reading today!`);
+              setTimeout(() => setSkippedAlertToast(null), 5000);
 
-            if (!hasRecentLog && al.lastTriggeredDate !== todayStr) {
+              // Sync skip state update to Supabase in real-time
+              const supabase = getSupabaseClient();
+              if (supabase && user) {
+                supabase.from('blood_sugar_alerts').upsert({
+                  id: al.id,
+                  user_id: user.id,
+                  type: al.type,
+                  time: al.time,
+                  label: al.label,
+                  is_active: al.isActive,
+                  meal_type: al.mealType,
+                  frequency: al.frequency || 'daily',
+                  start_date: al.startDate || todayStr,
+                  last_triggered_date: todayStr
+                }).then(() => {});
+              }
+            } else {
+              // Trigger urgent alarm
               setActiveTriggeredAlert(al);
-              break;
             }
+            break;
           }
         }
       }
@@ -184,7 +238,7 @@ function App() {
     checkAlarms(); // Immediate check on load
 
     return () => clearInterval(interval);
-  }, [alerts, readings, snoozedAlerts, activeTriggeredAlert]);
+  }, [alerts, readings, snoozedAlerts, activeTriggeredAlert, user]);
 
   // Alert Actions
   const handleSnoozeAlert = (alertId: string) => {
@@ -294,7 +348,9 @@ function App() {
           label: al.label,
           is_active: al.isActive,
           meal_type: al.mealType,
-          last_triggered_date: al.lastTriggeredDate
+          last_triggered_date: al.lastTriggeredDate,
+          frequency: al.frequency || 'daily',
+          start_date: al.startDate || new Date().toISOString().slice(0, 10)
         }));
 
         await supabase
@@ -364,6 +420,8 @@ function App() {
           label: added.label,
           is_active: added.isActive,
           meal_type: added.mealType,
+          frequency: added.frequency || 'daily',
+          start_date: added.startDate || new Date().toISOString().slice(0, 10),
           last_triggered_date: added.lastTriggeredDate
         });
       } catch (e) {
@@ -387,6 +445,8 @@ function App() {
           label: updated.label,
           is_active: updated.isActive,
           meal_type: updated.mealType,
+          frequency: updated.frequency || 'daily',
+          start_date: updated.startDate || new Date().toISOString().slice(0, 10),
           last_triggered_date: updated.lastTriggeredDate
         });
       } catch (e) {
@@ -419,6 +479,34 @@ function App() {
 
   return (
     <>
+      {skippedAlertToast && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 3000,
+            background: 'var(--bg-card)',
+            border: '1.5px solid var(--emerald)',
+            borderRadius: '12px',
+            padding: '12px 18px',
+            fontSize: '11px',
+            color: 'var(--emerald)',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            animation: 'slideDown 0.3s ease-out',
+            width: 'calc(100% - 40px)',
+            maxWidth: '400px'
+          }}
+        >
+          <span>✨</span>
+          <span style={{ fontWeight: 'bold' }}>{skippedAlertToast}</span>
+        </div>
+      )}
+
       {activeTriggeredAlert && (
         <AlertBanner
           alert={activeTriggeredAlert}

@@ -22,6 +22,8 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
   const [time, setTime] = useState('08:00');
   const [type, setType] = useState<'meal' | 'record'>('meal');
   const [mealType, setMealType] = useState<Required<InAppAlert>['mealType']>('breakfast');
+  const [frequency, setFrequency] = useState<'daily' | 'alternate'>('daily');
+  const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
 
   const handleToggleActive = (alert: InAppAlert) => {
     onUpdateAlert({ ...alert, isActive: !alert.isActive });
@@ -52,7 +54,9 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
       time,
       label: newLabel,
       isActive: true,
-      mealType: type === 'meal' ? mealType : undefined
+      mealType: type === 'meal' ? mealType : undefined,
+      frequency: type === 'record' ? frequency : 'daily',
+      startDate: type === 'record' ? startDate : new Date().toISOString().slice(0, 10)
     });
 
     // Reset form
@@ -171,6 +175,44 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
             </div>
           )}
 
+          {/* Frequency & Start Date Picker (Only if type === 'record') */}
+          {type === 'record' && (
+            <>
+              <div className="form-group">
+                <label className="input-label">REMINDER FREQUENCY</label>
+                <div className="unit-toggle-pill inline-flex" style={{ width: '100%' }}>
+                  <button
+                    type="button"
+                    className={frequency === 'daily' ? 'active' : ''}
+                    onClick={() => setFrequency('daily')}
+                    style={{ flex: 1 }}
+                  >
+                    Daily
+                  </button>
+                  <button
+                    type="button"
+                    className={frequency === 'alternate' ? 'active' : ''}
+                    onClick={() => setFrequency('alternate')}
+                    style={{ flex: 1 }}
+                  >
+                    Alternate Days
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="input-label">START DATE</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="text-input"
+                  required
+                />
+              </div>
+            </>
+          )}
+
           {/* Custom Label */}
           <div className="form-group">
             <label className="input-label">CUSTOM LABEL (OPTIONAL)</label>
@@ -272,7 +314,14 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
                       {al.type === 'meal' ? 'MEAL' : 'LOG REMINDER'}
                     </span>
                   </div>
-                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>{al.label}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 500 }}>{al.label}</span>
+                    {al.type === 'record' && (
+                      <span style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>
+                        🔁 {al.frequency === 'alternate' ? 'Alternate Days' : 'Daily'} starting {al.startDate || 'today'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
