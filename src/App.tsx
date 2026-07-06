@@ -675,6 +675,7 @@ function App() {
             user_id: user.id,
             endpoint: subscription.endpoint,
             subscription: JSON.parse(JSON.stringify(subscription)),
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             updated_at: new Date().toISOString()
           }, { onConflict: 'endpoint' });
 
