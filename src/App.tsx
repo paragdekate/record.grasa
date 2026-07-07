@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { 
   loadReadings, 
   addReading, 
@@ -41,9 +41,122 @@ function App() {
   const [skippedAlertToast, setSkippedAlertToast] = useState<string | null>(null);
 
   // Web Push Notifications state
+  // Web Push Notifications state
   const [pushSupported, setPushSupported] = useState<boolean>(false);
   const [pushSubscribed, setPushSubscribed] = useState<boolean>(false);
   const [pushLoading, setPushLoading] = useState<boolean>(false);
+
+  // Bidirectional Automatic Synchronization Helper
+  const syncAllData = useCallback(async (sbUser: GoogleProfile | null = user) => {
+    const activeUser = sbUser || user;
+    if (!activeUser) return;
+
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    // 1. Sync Alerts
+    try {
+      const { data, error } = await supabase
+        .from('blood_sugar_alerts')
+        .select('*');
+
+      if (!error && data) {
+        if (data.length > 0) {
+          const sbAlerts: InAppAlert[] = data.map(row => ({
+            id: row.id,
+            type: row.type,
+            time: row.time,
+            label: row.label,
+            isActive: row.is_active,
+            mealType: row.meal_type || undefined,
+            lastTriggeredDate: row.last_triggered_date || undefined,
+            frequency: row.frequency || 'daily',
+            startDate: row.start_date || new Date().toISOString().slice(0, 10)
+          }));
+          saveAlerts(sbAlerts);
+          setAlerts(sbAlerts);
+        } else {
+          // Push local alerts up
+          const local = loadAlerts();
+          if (local.length > 0) {
+            const rows = local.map(al => ({
+              id: al.id,
+              user_id: activeUser.id,
+              type: al.type,
+              time: al.time,
+              label: al.label,
+              is_active: al.isActive,
+              meal_type: al.mealType,
+              last_triggered_date: al.lastTriggeredDate,
+              frequency: al.frequency || 'daily',
+              start_date: al.startDate || new Date().toISOString().slice(0, 10)
+            }));
+            await supabase.from('blood_sugar_alerts').upsert(rows);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Cloud alerts sync failed:', err);
+    }
+
+    // 2. Sync Readings (Bidirectional)
+    try {
+      const { data, error } = await supabase
+        .from('blood_sugar_readings')
+        .select('*')
+        .order('measured_at', { ascending: false });
+
+      if (!error && data) {
+        const localReadings = loadReadings();
+        const sbReadings: SugarReading[] = data.map(row => ({
+          id: row.id,
+          value: row.value,
+          unit: row.unit,
+          context: row.context,
+          notes: row.notes || '',
+          measuredAt: row.measured_at
+        }));
+
+        // Identify local-only readings (exist locally but not on cloud)
+        const localOnly = localReadings.filter(l => 
+          !sbReadings.some(c => c.id === l.id || (c.measuredAt === l.measuredAt && Math.abs(c.value - l.value) < 0.01))
+        );
+
+        // Identify cloud-only readings (exist on cloud but not locally)
+        const cloudOnly = sbReadings.filter(c => 
+          !localReadings.some(l => l.id === c.id || (l.measuredAt === c.measuredAt && Math.abs(l.value - c.value) < 0.01))
+        );
+
+        // Upload local-only readings if any
+        if (localOnly.length > 0) {
+          const rowsToUpload = localOnly.map(r => ({
+            id: r.id,
+            user_id: activeUser.id,
+            value: r.value,
+            unit: r.unit,
+            context: r.context,
+            notes: r.notes || '',
+            measured_at: r.measuredAt
+          }));
+          await supabase.from('blood_sugar_readings').upsert(rowsToUpload);
+        }
+
+        // Merge both arrays for the final local representation
+        const merged = [...localReadings];
+        cloudOnly.forEach(c => {
+          merged.push(c);
+        });
+
+        // Sort newest first
+        merged.sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
+
+        localStorage.setItem('blood_sugar_readings', JSON.stringify(merged));
+        setReadings(merged);
+      }
+    } catch (err) {
+      console.error('Cloud readings sync failed:', err);
+    }
+  }, [user, readings, alerts]);
 
   // 1. Initial Data and Session Setup
   useEffect(() => {
@@ -63,127 +176,17 @@ function App() {
     // Initialize Auth Session
     const supabase = getSupabaseClient();
     if (supabase) {
-      const syncAlerts = async (sbUser: any) => {
-        try {
-          const { data, error } = await supabase
-            .from('blood_sugar_alerts')
-            .select('*');
-
-          if (error) {
-            console.error('Error fetching cloud alerts:', error);
-            return;
-          }
-
-          if (data && data.length > 0) {
-            const sbAlerts: InAppAlert[] = data.map(row => ({
-              id: row.id,
-              type: row.type,
-              time: row.time,
-              label: row.label,
-              isActive: row.is_active,
-              mealType: row.meal_type || undefined,
-              lastTriggeredDate: row.last_triggered_date || undefined,
-              frequency: row.frequency || 'daily',
-              startDate: row.start_date || new Date().toISOString().slice(0, 10)
-            }));
-            saveAlerts(sbAlerts);
-            setAlerts(sbAlerts);
-          } else {
-            // Push local alerts up
-            const local = loadAlerts();
-            if (local.length > 0) {
-              const rows = local.map(al => ({
-                id: al.id,
-                user_id: sbUser.id,
-                type: al.type,
-                time: al.time,
-                label: al.label,
-                is_active: al.isActive,
-                meal_type: al.mealType,
-                last_triggered_date: al.lastTriggeredDate,
-                frequency: al.frequency || 'daily',
-                start_date: al.startDate || new Date().toISOString().slice(0, 10)
-              }));
-              await supabase.from('blood_sugar_alerts').insert(rows);
-            }
-          }
-        } catch (err) {
-          console.error('Cloud alerts sync failed:', err);
-        }
-      };
-
-      const syncReadings = async (sbUser: any) => {
-        try {
-          const { data, error } = await supabase
-            .from('blood_sugar_readings')
-            .select('*')
-            .order('measured_at', { ascending: false });
-
-          if (error) {
-            console.error('Error fetching cloud readings:', error);
-            return;
-          }
-
-          const localReadings = loadReadings();
-
-          if (data && data.length > 0) {
-            const sbReadings: SugarReading[] = data.map(row => ({
-              id: row.id,
-              value: row.value,
-              unit: row.unit,
-              context: row.context,
-              notes: row.notes || '',
-              measuredAt: row.measured_at
-            }));
-
-            // Merge local and cloud readings
-            const merged = [...localReadings];
-            sbReadings.forEach(c => {
-              const exists = merged.some(l => 
-                l.id === c.id || 
-                (l.measuredAt === c.measuredAt && Math.abs(l.value - c.value) < 0.01)
-              );
-              if (!exists) {
-                merged.push(c);
-              }
-            });
-
-            // Sort newest first
-            merged.sort((a, b) => new Date(b.measuredAt).getTime() - new Date(a.measuredAt).getTime());
-
-            localStorage.setItem('blood_sugar_readings', JSON.stringify(merged));
-            setReadings(merged);
-          } else {
-            // Push local readings up
-            if (localReadings.length > 0) {
-              const rows = localReadings.map(r => ({
-                id: r.id,
-                user_id: sbUser.id,
-                value: r.value,
-                unit: r.unit,
-                context: r.context,
-                notes: r.notes || '',
-                measured_at: r.measuredAt
-              }));
-              await supabase.from('blood_sugar_readings').upsert(rows);
-            }
-          }
-        } catch (err) {
-          console.error('Cloud readings sync failed:', err);
-        }
-      };
-
       // Get current session user
       supabase.auth.getUser().then(({ data: { user: sbUser } }) => {
         if (sbUser) {
-          setUser({
+          const profile: GoogleProfile = {
             id: sbUser.id,
             email: sbUser.email || '',
             name: sbUser.user_metadata.full_name || sbUser.user_metadata.name || sbUser.email?.split('@')[0] || 'User',
             avatarUrl: sbUser.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${sbUser.id}`
-          });
-          syncAlerts(sbUser);
-          syncReadings(sbUser);
+          };
+          setUser(profile);
+          syncAllData(profile);
         } else {
           setUser(null);
         }
@@ -192,14 +195,14 @@ function App() {
       // Listen for auth state changes (sign ins/outs)
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
-          setUser({
+          const profile: GoogleProfile = {
             id: session.user.id,
             email: session.user.email || '',
             name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email?.split('@')[0] || 'User',
             avatarUrl: session.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${session.user.id}`
-          });
-          syncAlerts(session.user);
-          syncReadings(session.user);
+          };
+          setUser(profile);
+          syncAllData(profile);
         } else {
           setUser(null);
           setReadings([]);
@@ -215,7 +218,20 @@ function App() {
     } else {
       setUser(null);
     }
-  }, [activeTab]); // Re-run checks when visiting settings tabs
+  }, [activeTab, syncAllData]);
+
+  // 1b. Online Auto-Sync Setup
+  useEffect(() => {
+    const handleOnline = () => {
+      if (navigator.onLine && user) {
+        console.log('App online detected: triggering automatic bidirectional sync...');
+        syncAllData();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [user, syncAllData]); // Re-run checks when visiting settings tabs
 
   // Check Push Notification Support and Status
   useEffect(() => {

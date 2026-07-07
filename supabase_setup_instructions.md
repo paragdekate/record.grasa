@@ -173,8 +173,14 @@ serve(async (req) => {
     for (const sub of subscriptions) {
       const { user_id, subscription: pushSub, timezone } = sub;
 
-      // 1. Get current time formatted in user's timezone
-      const localTime = new Date().toLocaleString("en-US", { timeZone: timezone });
+      // 1. Get current time formatted in user's timezone (safely falling back to Asia/Kolkata if missing/invalid)
+      let localTime;
+      try {
+        localTime = new Date().toLocaleString("en-US", { timeZone: timezone || "Asia/Kolkata" });
+      } catch (e) {
+        console.warn(`Invalid timezone "${timezone}" for user ${user_id}. Falling back to Asia/Kolkata.`);
+        localTime = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+      }
       const localDateObj = new Date(localTime);
       
       const currentHHMM = localDateObj.toTimeString().slice(0, 5); // "HH:MM"
