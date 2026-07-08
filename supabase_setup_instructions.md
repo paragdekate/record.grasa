@@ -6,10 +6,13 @@ This guide outlines the steps required on the Supabase side to enable background
 
 ## 1. Database Table Configuration (SQL Editor)
 
-Run the following SQL script in your **Supabase SQL Editor** to create the subscription database table, add the timezone field, and enable Row Level Security (RLS):
+Run the following SQL script in your **Supabase SQL Editor** to create the required database tables, add the timezone field, and enable Row Level Security (RLS):
 
 ```sql
--- 1. Create the push subscriptions table inside the 'record' schema
+-- 1. Create the schema if it doesn't exist
+create schema if not exists record;
+
+-- 2. Create the push subscriptions table inside the 'record' schema
 create table record.push_subscriptions (
     id bigint generated always as identity primary key,
     user_id uuid references auth.users(id) on delete cascade not null,
@@ -20,37 +23,76 @@ create table record.push_subscriptions (
     updated_at timestamptz default timezone('utc'::text, now()) not null
 );
 
--- If you already created the table, run this to add the timezone column:
--- alter table record.push_subscriptions add column timezone text default 'UTC' not null;
+-- 3. Create the blood sugar readings table inside the 'record' schema
+create table record.blood_sugar_readings (
+    id uuid primary key,
+    user_id uuid references auth.users(id) on delete cascade not null,
+    value numeric not null,
+    unit text not null,
+    context text not null,
+    notes text,
+    measured_at timestamptz not null,
+    created_at timestamptz default timezone('utc'::text, now()) not null
+);
 
--- 2. Enable Row Level Security
+-- 4. Create the blood sugar alerts table inside the 'record' schema
+create table record.blood_sugar_alerts (
+    id uuid primary key,
+    user_id uuid references auth.users(id) on delete cascade not null,
+    type text not null,
+    time text not null, -- formatted as "HH:MM"
+    label text,
+    is_active boolean default true not null,
+    meal_type text,
+    last_triggered_date text, -- formatted as "YYYY-MM-DD"
+    frequency text default 'daily' not null,
+    start_date text default to_char(now(), 'YYYY-MM-DD') not null,
+    created_at timestamptz default timezone('utc'::text, now()) not null
+);
+
+-- Enable Row Level Security
 alter table record.push_subscriptions enable row level security;
+alter table record.blood_sugar_readings enable row level security;
+alter table record.blood_sugar_alerts enable row level security;
 
--- 3. Create RLS Policies to restrict access to authenticated users
+-- Create RLS Policies for push_subscriptions
 create policy "Users can view their own push subscriptions"
-on record.push_subscriptions
-for select
-to authenticated
-using (auth.uid() = user_id);
+on record.push_subscriptions for select to authenticated using (auth.uid() = user_id);
 
 create policy "Users can insert their own push subscriptions"
-on record.push_subscriptions
-for insert
-to authenticated
-with check (auth.uid() = user_id);
+on record.push_subscriptions for insert to authenticated with check (auth.uid() = user_id);
 
 create policy "Users can update their own push subscriptions"
-on record.push_subscriptions
-for update
-to authenticated
-using (auth.uid() = user_id)
-with check (auth.uid() = user_id);
+on record.push_subscriptions for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create policy "Users can delete their own push subscriptions"
-on record.push_subscriptions
-for delete
-to authenticated
-using (auth.uid() = user_id);
+on record.push_subscriptions for delete to authenticated using (auth.uid() = user_id);
+
+-- Create RLS Policies for blood_sugar_readings
+create policy "Users can view their own blood sugar readings"
+on record.blood_sugar_readings for select to authenticated using (auth.uid() = user_id);
+
+create policy "Users can insert their own blood sugar readings"
+on record.blood_sugar_readings for insert to authenticated with check (auth.uid() = user_id);
+
+create policy "Users can update their own blood sugar readings"
+on record.blood_sugar_readings for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users can delete their own blood sugar readings"
+on record.blood_sugar_readings for delete to authenticated using (auth.uid() = user_id);
+
+-- Create RLS Policies for blood_sugar_alerts
+create policy "Users can view their own blood sugar alerts"
+on record.blood_sugar_alerts for select to authenticated using (auth.uid() = user_id);
+
+create policy "Users can insert their own blood sugar alerts"
+on record.blood_sugar_alerts for insert to authenticated with check (auth.uid() = user_id);
+
+create policy "Users can update their own blood sugar alerts"
+on record.blood_sugar_alerts for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create policy "Users can delete their own blood sugar alerts"
+on record.blood_sugar_alerts for delete to authenticated using (auth.uid() = user_id);
 ```
 
 ---
