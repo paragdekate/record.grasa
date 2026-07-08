@@ -47,8 +47,8 @@ function App() {
   const [pushLoading, setPushLoading] = useState<boolean>(false);
 
   // Bidirectional Automatic Synchronization Helper
-  const syncAllData = useCallback(async (sbUser: GoogleProfile | null = user) => {
-    const activeUser = sbUser || user;
+  const syncAllData = useCallback(async (sbUser: GoogleProfile | null) => {
+    const activeUser = sbUser;
     if (!activeUser) return;
 
     const supabase = getSupabaseClient();
@@ -156,7 +156,7 @@ function App() {
     } catch (err) {
       console.error('Cloud readings sync failed:', err);
     }
-  }, [user, readings, alerts]);
+  }, []);
 
   // 1. Initial Data and Session Setup
   useEffect(() => {
@@ -225,13 +225,13 @@ function App() {
     const handleOnline = () => {
       if (navigator.onLine && user) {
         console.log('App online detected: triggering automatic bidirectional sync...');
-        syncAllData();
+        syncAllData(user);
       }
     };
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [user, syncAllData]); // Re-run checks when visiting settings tabs
+  }, [user, syncAllData]);
 
   // Check Push Notification Support and Status
   useEffect(() => {
