@@ -195,6 +195,18 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
     };
   }, []);
 
+  // Assign stream to video element once it is mounted in the DOM
+  useEffect(() => {
+    if (permissionState === 'granted' && scanStatus === 'scanning' && streamRef.current && videoRef.current) {
+      if (videoRef.current.srcObject !== streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(err => {
+          console.error('Play in useEffect failed:', err);
+        });
+      }
+    }
+  }, [permissionState, scanStatus]);
+
   const handleConfirmSave = () => {
     onScanSuccess(detectedValue);
     onClose();
