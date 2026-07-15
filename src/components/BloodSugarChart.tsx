@@ -556,8 +556,7 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
               transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
           >
-            {/* Modal Header Actions */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px', paddingLeft: '8px', paddingRight: '8px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Activity size={18} className="text-accent" />
                 <span style={{ fontWeight: 'bold', fontSize: '14px' }}>Expanded Trend Analysis</span>
