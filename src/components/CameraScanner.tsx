@@ -31,9 +31,18 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
 
       stopCamera();
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' } // Prefer back camera
-      });
+      // Try capturing back camera (environment) first. If it fails (e.g., on Mac FaceTime camera), fall back to default video stream.
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+      } catch (err) {
+        console.warn('Back camera facing constraint failed, falling back to default camera:', err);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: true
+        });
+      }
 
       streamRef.current = stream;
       setPermissionState('granted');
@@ -41,6 +50,10 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        // Explicitly trigger play to prevent frozen/blank screen on mobile Safari & Chrome
+        videoRef.current.play().catch(playErr => {
+          console.error('Error starting video play:', playErr);
+        });
       }
     } catch (error: any) {
       console.error('Camera access error:', error);
