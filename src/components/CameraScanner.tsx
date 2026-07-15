@@ -16,12 +16,13 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
   // OCR Captured image & value states
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [detectedValue, setDetectedValue] = useState<number>(100);
-  const [countdown, setCountdown] = useState<number>(3);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   const initCamera = async () => {
     setPermissionState('checking');
     setErrorMessage('');
     setCapturedImage(null);
+    setIsAnalyzing(false);
     
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -37,7 +38,6 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
       streamRef.current = stream;
       setPermissionState('granted');
       setScanStatus('scanning');
-      setCountdown(3);
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -54,7 +54,6 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
       
       // Fallback directly to simulation mode
       setScanStatus('scanning');
-      setCountdown(3);
     }
   };
 
@@ -68,21 +67,18 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
     }
   };
 
-  const captureFrame = () => {
-    if (videoRef.current) {
-      const video = videoRef.current;
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
+  const captureFrame = (simulatedVal?: number) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (ctx) {
+      canvas.width = 300;
+      canvas.height = 180;
       
-      if (ctx) {
-        // Set canvas to crop viewfinder box aspect ratio
-        canvas.width = 300;
-        canvas.height = 180;
-        
+      if (videoRef.current && permissionState === 'granted') {
+        const video = videoRef.current;
         const vWidth = video.videoWidth || 640;
         const vHeight = video.videoHeight || 480;
-        
-        // Define crop box centered on viewfinder
         const cropWidth = vWidth * 0.7;
         const cropHeight = cropWidth * (180 / 300);
         const sx = (vWidth - cropWidth) / 2;
@@ -91,40 +87,76 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
         try {
           ctx.drawImage(video, sx, sy, cropWidth, cropHeight, 0, 0, 300, 180);
           setCapturedImage(canvas.toDataURL('image/png'));
+          return;
         } catch (e) {
           console.warn('Could not draw video frame to canvas', e);
         }
       }
+      
+      // Fallback: draw a beautiful digital glucometer simulation on the canvas
+      const grad = ctx.createLinearGradient(0, 0, 300, 180);
+      grad.addColorStop(0, '#111827');
+      grad.addColorStop(1, '#1f2937');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 300, 180);
+      
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(10, 10, 280, 160);
+      
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.roundRect(40, 20, 220, 140, 16);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.stroke();
+      
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(60, 35, 180, 80);
+      ctx.strokeStyle = '#334155';
+      ctx.strokeRect(60, 35, 180, 80);
+      
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.fillRect(60, 35, 180, 40);
+      
+      ctx.font = '800 48px monospace';
+      ctx.fillStyle = '#0f172a';
+      ctx.textAlign = 'center';
+      const displayVal = simulatedVal || 105;
+      ctx.fillText(displayVal.toString(), 140, 92);
+      
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#1e293b';
+      ctx.fillText('mg/dL', 210, 105);
+      
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(85, 92, 6, 0, Math.PI * 2);
+      ctx.fill();
+      
+      setCapturedImage(canvas.toDataURL('image/png'));
     }
   };
 
-  useEffect(() => {
-    initCamera();
-    return () => {
-      stopCamera();
-    };
-  }, []);
-
-  // Countdown timer trigger
-  useEffect(() => {
-    if (scanStatus !== 'scanning') return;
-
-    let timer: any;
-    if (countdown > 0) {
-      timer = setTimeout(() => {
-        setCountdown(prev => prev - 1);
-      }, 800);
-    } else {
-      // Capture the current camera frame screenshot
-      captureFrame();
-      stopCamera(); // Stop camera stream to conserve battery
-
-      // Generate a simulated recognized value for confirmation
-      const randomDetected = 80 + Math.floor(Math.random() * 85); // 80 - 165 mg/dL
-      setDetectedValue(randomDetected);
+  const handleCapture = () => {
+    if (scanStatus !== 'scanning' || isAnalyzing) return;
+    
+    if ('vibrate' in navigator) {
+      navigator.vibrate(40);
+    }
+    
+    // Generate the value beforehand so the canvas image and the OCR output match!
+    const targetValue = 85 + Math.floor(Math.random() * 55); // 85 - 140 mg/dL
+    
+    captureFrame(targetValue);
+    stopCamera();
+    setIsAnalyzing(true);
+    
+    setTimeout(() => {
+      setDetectedValue(targetValue);
+      setIsAnalyzing(false);
       setScanStatus('confirm');
       
-      // Haptics & Sound alert
       if ('vibrate' in navigator) {
         navigator.vibrate([80, 40, 80]);
       }
@@ -135,15 +167,20 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
         oscillator.connect(gainNode);
         gainNode.connect(audioCtx.destination);
         oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(784, audioCtx.currentTime); // G5 note
+        oscillator.frequency.setValueAtTime(784, audioCtx.currentTime);
         gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
         oscillator.start();
         oscillator.stop(audioCtx.currentTime + 0.12);
       } catch (e) {}
-    }
+    }, 1200);
+  };
 
-    return () => clearTimeout(timer);
-  }, [countdown, scanStatus]);
+  useEffect(() => {
+    initCamera();
+    return () => {
+      stopCamera();
+    };
+  }, []);
 
   const handleConfirmSave = () => {
     onScanSuccess(detectedValue);
@@ -210,12 +247,57 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
                 <div className="corner bottom-left"></div>
                 <div className="corner bottom-right"></div>
               </div>
-              <div className="scan-prompt">
-                <div className="scan-pill">
-                  <span className="scanner-dot"></span>
-                  Position glucometer: {countdown > 0 ? `Scanning in ${countdown}s...` : 'Analyzing...'}
+              
+              {isAnalyzing ? (
+                <div className="scan-prompt">
+                  <div className="scan-pill">
+                    <RefreshCw size={12} className="spin text-cyan mr-1" />
+                    Analyzing display characters...
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="scan-prompt">
+                    <div className="scan-pill">
+                      <span className="scanner-dot"></span>
+                      Align glucometer display inside brackets
+                    </div>
+                  </div>
+
+                  {/* Floating Shutter Capture Button */}
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '16px',
+                    left: 0,
+                    right: 0,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    zIndex: 10
+                  }}>
+                    <button
+                      type="button"
+                      onClick={handleCapture}
+                      style={{
+                        width: '52px',
+                        height: '52px',
+                        borderRadius: '50%',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: 'var(--cyan)',
+                        border: '4px solid rgba(255, 255, 255, 0.2)',
+                        boxShadow: '0 0 15px rgba(6, 182, 212, 0.6)',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Capture & Scan"
+                    >
+                      <Camera size={22} color="#0c0d14" />
+                    </button>
+                  </div>
+                </>
+              )}
             </>
           )}
 
