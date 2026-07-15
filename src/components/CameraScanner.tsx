@@ -17,12 +17,35 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [detectedValue, setDetectedValue] = useState<number>(100);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [zoomLevel, setZoomLevel] = useState<1 | 2>(1);
+
+  const applyNativeZoom = async (level: number) => {
+    if (streamRef.current) {
+      const videoTrack = streamRef.current.getVideoTracks()[0];
+      if (videoTrack) {
+        try {
+          const capabilities = videoTrack.getCapabilities() as any;
+          if (capabilities && capabilities.zoom) {
+            const min = capabilities.zoom.min || 1;
+            const max = capabilities.zoom.max || 3;
+            const targetZoom = level === 2 ? Math.min(max, min + 1.5) : min;
+            await videoTrack.applyConstraints({
+              advanced: [{ zoom: targetZoom }] as any
+            });
+          }
+        } catch (e) {
+          console.warn('Native hardware zoom constraint not supported:', e);
+        }
+      }
+    }
+  };
 
   const initCamera = async () => {
     setPermissionState('checking');
     setErrorMessage('');
     setCapturedImage(null);
     setIsAnalyzing(false);
+    setZoomLevel(1);
     
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -92,8 +115,11 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
         const video = videoRef.current;
         const vWidth = video.videoWidth || 640;
         const vHeight = video.videoHeight || 480;
-        const cropWidth = vWidth * 0.7;
-        const cropHeight = cropWidth * (180 / 300);
+        
+        // Define crop box centered on viewfinder, adjusted by zoom factor
+        const zoomFactor = zoomLevel === 2 ? 1.6 : 1.0;
+        const cropWidth = (vWidth * 0.7) / zoomFactor;
+        const cropHeight = (vWidth * 0.7 * (180 / 300)) / zoomFactor;
         const sx = (vWidth - cropWidth) / 2;
         const sy = (vHeight - cropHeight) / 2;
         
@@ -241,6 +267,14 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
                 playsInline 
                 muted 
                 className="scanner-video"
+                style={{
+                  transform: zoomLevel === 2 ? 'scale(1.6)' : 'scale(1)',
+                  transformOrigin: 'center center',
+                  transition: 'transform 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover'
+                }}
               />
             ) : (
               <div className="scanner-placeholder">
@@ -287,6 +321,44 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
                       <span className="scanner-dot"></span>
                       Align glucometer display inside brackets
                     </div>
+                  </div>
+
+                  {/* Zoom Toggle Button */}
+                  <div style={{
+                    position: 'absolute',
+                    top: '16px',
+                    right: '16px',
+                    zIndex: 10
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newLevel = zoomLevel === 1 ? 2 : 1;
+                        setZoomLevel(newLevel);
+                        applyNativeZoom(newLevel);
+                        if ('vibrate' in navigator) {
+                          navigator.vibrate(15);
+                        }
+                      }}
+                      style={{
+                        background: 'rgba(12, 13, 20, 0.75)',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--cyan)',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        padding: '6px 10px',
+                        borderRadius: '20px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      <span>🔍</span>
+                      <span>{zoomLevel === 1 ? '1x' : '1.6x'}</span>
+                    </button>
                   </div>
 
                   {/* Floating Shutter Capture Button */}
