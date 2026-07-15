@@ -458,9 +458,29 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScanSuccess, onC
                     -
                   </button>
 
-                  <span className="result-value count-up" style={{ fontSize: '38px', fontWeight: '900', color: 'var(--cyan)' }}>
-                    {detectedValue}
-                  </span>
+                  <input
+                    type="number"
+                    pattern="[0-9]*"
+                    inputMode="numeric"
+                    value={detectedValue === 0 ? '' : detectedValue}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setDetectedValue(isNaN(val) ? 0 : val);
+                    }}
+                    style={{
+                      width: '100px',
+                      background: 'rgba(0, 0, 0, 0.25)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      color: 'var(--cyan)',
+                      fontSize: '32px',
+                      fontWeight: '900',
+                      textAlign: 'center',
+                      outline: 'none',
+                      fontFamily: 'var(--mono-font)',
+                      padding: '4px'
+                    }}
+                  />
 
                   <button 
                     type="button" 
