@@ -238,7 +238,7 @@ body {
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: 16px;
-  padding: 16px;
+  padding: 12px;
   box-shadow: 0 4px 20px rgba(0,0,0,0.15);
 }
 
@@ -1351,6 +1351,65 @@ body {
 
 .chart-dot-group circle {
   transition: r 0.15s ease, stroke-width 0.15s ease;
+}
+
+/* Chart Layout Customizations & Controls */
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 2px 4px;
+}
+
+.chart-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.timeframe-selector {
+  display: flex;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.tf-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tf-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.tf-btn.active {
+  background-color: var(--accent);
+  color: white;
+}
+
+/* Responsive constraints to minimize layout margins on small mobile screens */
+@media (max-width: 480px) {
+  .app-content {
+    padding: 12px;
+    gap: 12px;
+  }
+  .dashboard-card, .chart-card, .schema-card, .filters-card {
+    padding: 10px;
+    border-radius: 12px;
+  }
 }
 
 /* Supabase SQL tab styles */

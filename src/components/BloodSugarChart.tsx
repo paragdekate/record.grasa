@@ -57,19 +57,23 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
 
   // 2. Chart configurations
   const width = 600;
-  const height = 260;
-  const paddingLeft = 45;
-  const paddingRight = 20;
-  const paddingTop = 25;
-  const paddingBottom = 40;
+  const height = 300; // Increased height to reduce vertical squishing
+  const paddingLeft = 35; // Reduced paddings to maximize plot area and eliminate void margins
+  const paddingRight = 15;
+  const paddingTop = 15;
+  const paddingBottom = 30;
 
   const chartWidth = width - paddingLeft - paddingRight;
   const chartHeight = height - paddingTop - paddingBottom;
 
   // Values are stored in mg/dL internally. We calculate min/max in mg/dL, then convert labels if needed.
   const values = chartData.map(d => d.value);
-  const maxVal = Math.max(220, ...values) + 20; 
-  const minVal = Math.max(30, Math.min(60, ...values) - 20); 
+  const dataMax = Math.max(...values);
+  const dataMin = Math.min(...values);
+
+  // Dynamically adjust scale to match actual readings while keeping target range (70-140) visible
+  const maxVal = Math.max(150, dataMax + 10);
+  const minVal = Math.max(35, Math.min(65, dataMin - 10));
 
   // Helper scales
   const getX = (index: number) => {
