@@ -58,10 +58,10 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
   // 2. Chart configurations
   const width = 600;
   const height = 300; // Increased height to reduce vertical squishing
-  const paddingLeft = 35; // Reduced paddings to maximize plot area and eliminate void margins
-  const paddingRight = 15;
-  const paddingTop = 15;
-  const paddingBottom = 30;
+  const paddingLeft = 10; // Minimal margins for edge-to-edge plot area
+  const paddingRight = 10;
+  const paddingTop = 12;
+  const paddingBottom = 16;
 
   const chartWidth = width - paddingLeft - paddingRight;
   const chartHeight = height - paddingTop - paddingBottom;
@@ -117,7 +117,6 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
   // Target range boundaries in Y coordinates
   const targetMinY = getY(70);
   const targetMaxY = getY(140);
-  const targetBandHeight = targetMinY - targetMaxY;
 
   const handlePointHover = (reading: SugarReading, index: number) => {
     const cx = getX(index);
@@ -158,29 +157,33 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
         </filter>
       </defs>
 
-      {/* 1. Target Range Band (70 - 140 mg/dL) */}
+      {/* 1. Target Range Boundary Lines (No fill to keep background unified with card) */}
       {targetMaxY >= paddingTop && targetMinY <= height - paddingBottom && (
-        <rect
-          x={paddingLeft}
-          y={targetMaxY}
-          width={chartWidth}
-          height={targetBandHeight}
-          fill="rgba(16, 185, 129, 0.05)"
-          stroke="rgba(16, 185, 129, 0.12)"
-          strokeDasharray="2,2"
-        />
+        <>
+          <line
+            x1={paddingLeft}
+            y1={targetMaxY}
+            x2={width - paddingRight}
+            y2={targetMaxY}
+            stroke="#10b981"
+            strokeWidth="1"
+            strokeDasharray="3,3"
+            opacity="0.3"
+          />
+          <line
+            x1={paddingLeft}
+            y1={targetMinY}
+            x2={width - paddingRight}
+            y2={targetMinY}
+            stroke="#10b981"
+            strokeWidth="1"
+            strokeDasharray="3,3"
+            opacity="0.3"
+          />
+        </>
       )}
 
-      {/* 2. Axis Lines */}
-      <line
-        x1={paddingLeft}
-        y1={paddingTop}
-        x2={paddingLeft}
-        y2={height - paddingBottom}
-        stroke="var(--border-color)"
-        strokeWidth="1"
-        opacity="0.4"
-      />
+      {/* 2. Horizontal Base Line (no vertical Y-axis line for clean, modern look) */}
       <line
         x1={paddingLeft}
         y1={height - paddingBottom}
@@ -188,14 +191,14 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
         y2={height - paddingBottom}
         stroke="var(--border-color)"
         strokeWidth="1"
-        opacity="0.4"
+        opacity="0.3"
       />
 
-      {/* Y-Axis Unit Label at top */}
+      {/* Y-Axis Unit Label inside graph area */}
       <text
-        x={paddingLeft - 8}
-        y={paddingTop - 6}
-        textAnchor="end"
+        x={paddingLeft + 4}
+        y={paddingTop - 4}
+        textAnchor="start"
         fontSize="8"
         fontWeight="800"
         fill="var(--text-secondary)"
@@ -205,7 +208,7 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
         {unit.toUpperCase()}
       </text>
 
-      {/* Grid lines, Y Axis labels & Ticks */}
+      {/* Grid lines & Y Axis labels inside graph area */}
       {gridLines.map((lineVal) => {
         const yPos = getY(lineVal);
         if (yPos < paddingTop || yPos > height - paddingBottom) return null;
@@ -222,25 +225,17 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
               x2={width - paddingRight}
               y2={yPos}
               stroke="var(--border)"
-              strokeOpacity="0.3"
+              strokeOpacity="0.2"
               strokeDasharray="4,4"
             />
-            <line
-              x1={paddingLeft - 4}
-              y1={yPos}
-              x2={paddingLeft}
-              y2={yPos}
-              stroke="var(--border-color)"
-              strokeWidth="1"
-              opacity="0.5"
-            />
             <text
-              x={paddingLeft - 8}
-              y={yPos + 4}
-              textAnchor="end"
-              fontSize="10"
-              fill="var(--text)"
-              opacity="0.6"
+              x={paddingLeft + 4}
+              y={yPos - 4}
+              textAnchor="start"
+              fontSize="9"
+              fontWeight="bold"
+              fill="var(--text-secondary)"
+              opacity="0.7"
             >
               {displayVal}
             </text>
@@ -272,10 +267,7 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
         TARGET FLOOR
       </text>
 
-      {/* 3. Gradient area path */}
-      {chartData.length > 1 && (
-        <path d={areaD} fill="url(#chartGradient)" />
-      )}
+      {/* 3. Gradient area path (removed to keep background uniform with card) */}
 
       {/* 4. Core trend line path */}
       {chartData.length > 1 && (
@@ -463,6 +455,8 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
       {selectedReading && (
         <div style={{
           marginTop: '12px',
+          marginLeft: '12px',
+          marginRight: '12px',
           background: 'var(--bg-input)',
           border: '1px solid var(--border-color)',
           borderRadius: '12px',
