@@ -56,7 +56,8 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
   }
 
   // 2. Chart configurations
-  const width = 600;
+  const isLandscapeWide = isExpanded && isForceLandscape && (timeframe === '30d' || timeframe === 'all');
+  const width = isLandscapeWide ? 1000 : 600; // Stretch to 1000px width in landscape for 30d/all views
   const height = 300; // Increased height to reduce vertical squishing
   const paddingLeft = 10; // Minimal margins for edge-to-edge plot area
   const paddingRight = 10;
@@ -562,7 +563,7 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
                 <span style={{ fontWeight: 'bold', fontSize: '14px' }}>Expanded Trend Analysis</span>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingLeft: '12px' }}>
                 {/* Timeframe selector in expanded view */}
                 <div className="timeframe-selector">
                   {(['7d', '14d', '30d', 'all'] as const).map(tf => (
@@ -686,6 +687,8 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
               left: 50%;
               margin-left: -50vh;
               margin-top: -50vw;
+              padding: 16px 24px;
+              box-sizing: border-box;
             }
           `}</style>
         </div>
