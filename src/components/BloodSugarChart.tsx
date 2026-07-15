@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { convertValue, getStatusColor, getContextLabel } from '../db';
 import type { SugarReading, ReadingUnit } from '../db';
-import { Activity, Maximize2, RotateCw, X } from 'lucide-react';
+import { Activity, Maximize2, Minimize2, RotateCw } from 'lucide-react';
 
 interface BloodSugarChartProps {
   readings: SugarReading[];
@@ -402,7 +402,10 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
           <button 
             type="button"
             className="btn btn-secondary"
-            onClick={() => setIsExpanded(true)}
+            onClick={() => {
+              setIsExpanded(true);
+              setIsForceLandscape(true);
+            }}
             style={{ padding: '6px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent' }}
             title="Expand Chart View"
           >
@@ -559,27 +562,46 @@ export const BloodSugarChart: React.FC<BloodSugarChartProps> = ({ readings, unit
                 <span style={{ fontWeight: 'bold', fontSize: '14px' }}>Expanded Trend Analysis</span>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setIsForceLandscape(!isForceLandscape)}
-                  style={{ gap: '4px', padding: '6px 12px' }}
-                >
-                  <RotateCw size={14} className={isForceLandscape ? 'spin' : ''} />
-                  <span>{isForceLandscape ? 'Portrait' : 'Rotate Landscape'}</span>
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {/* Timeframe selector in expanded view */}
+                <div className="timeframe-selector">
+                  {(['7d', '14d', '30d', 'all'] as const).map(tf => (
+                    <button
+                      key={tf}
+                      className={`tf-btn ${timeframe === tf ? 'active' : ''}`}
+                      onClick={() => {
+                        setTimeframe(tf);
+                        if ('vibrate' in navigator) {
+                          navigator.vibrate(10);
+                        }
+                      }}
+                    >
+                      {tf.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
 
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
+                  onClick={() => setIsForceLandscape(!isForceLandscape)}
+                  style={{ gap: '4px', padding: '6px 12px', display: 'flex', alignItems: 'center' }}
+                >
+                  <RotateCw size={14} className={isForceLandscape ? 'spin' : ''} />
+                  <span>{isForceLandscape ? 'Portrait' : 'Rotate'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
                   onClick={() => {
                     setIsExpanded(false);
                     setIsForceLandscape(false);
                   }}
-                  style={{ padding: '6px', borderRadius: '50%' }}
+                  style={{ padding: '6px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  title="Minimize Chart View"
                 >
-                  <X size={16} />
+                  <Minimize2 size={14} className="text-secondary" />
                 </button>
               </div>
             </div>
