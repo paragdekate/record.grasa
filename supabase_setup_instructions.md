@@ -104,10 +104,15 @@ To send notifications, your Supabase project needs to sign push payloads with yo
 Configure them inside your **Supabase Dashboard** under **Settings > API > Secrets / Env Variables** or run these commands using the Supabase CLI:
 
 ```bash
-VAPID_PUBLIC_KEY=BMW0eQ36Hgo0vulNeDSQUEmaNqNbxsX4-O1CWiRgfRCIYHtbMOx8Eg6jrYJnCw3oZNso2jmJ_s9_Q_lUbarxtD4
-VAPID_PRIVATE_KEY=VIAm7ZTMnhxYgkdpCxFXdhEHNaJisL3Jm0GjX8nF1jQ
+VAPID_PUBLIC_KEY=YOUR_VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY=YOUR_VAPID_PRIVATE_KEY
 VAPID_SUBJECT=mailto:your-email@example.com
 ```
+
+> **Note**: You can generate a new VAPID keypair by running:
+> ```bash
+> npx web-push generate-vapid-keys
+> ```
 
 ---
 
