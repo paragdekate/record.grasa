@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { StyleSheet, View, Text, SafeAreaView, TouchableOpacity, Platform, Alert } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
+
+WebBrowser.maybeCompleteAuthSession();
 
 import { 
   loadReadings, 
@@ -173,43 +177,136 @@ export default function App() {
       // 3. Connect Supabase Session if active
       const supabase = getSupabaseClient();
       if (supabase) {
-        const { data: { user: sbUser } } = await supabase.auth.getUser();
-        if (sbUser) {
+        // Subscribe to auth state changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          if (session?.user) {
+            const profile: GoogleProfile = {
+              id: session.user.id,
+              email: session.user.email || '',
+              name: session.user.user_metadata.full_name || session.user.user_metadata.name || 'User',
+              avatarUrl: session.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${session.user.id}`
+            };
+            setUser(profile);
+            await syncAllData(profile);
+          } else {
+            setUser(null);
+            setReadings([]);
+            setAlerts([]);
+          }
+        });
+
+        // Check active session on startup
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
           const profile: GoogleProfile = {
-            id: sbUser.id,
-            email: sbUser.email || '',
-            name: sbUser.user_metadata.full_name || sbUser.user_metadata.name || 'User',
-            avatarUrl: sbUser.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${sbUser.id}`
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata.full_name || session.user.user_metadata.name || 'User',
+            avatarUrl: session.user.user_metadata.avatar_url || `https://api.dicebear.com/7.x/adventurer/svg?seed=${session.user.id}`
           };
           setUser(profile);
           await syncAllData(profile);
         }
+
+        return () => {
+          subscription.unsubscribe();
+        };
       }
     };
 
     initApp();
   }, [syncAllData]);
 
-  // Auth logins simulation (OAuth Supabase redirects usually require dev environment linking)
+  // Auth logins using Google OAuth with expo-web-browser and expo-auth-session
   const handleLogin = async () => {
     const supabase = getSupabaseClient();
     if (!supabase) {
       Alert.alert('Configuration Missing', 'Supabase credentials are not configured.');
       return;
     }
-    // Simulate login for native mock-up since native Google OAuth requires setting up redirect schemes.
-    // In production React Native app, we use supabase.auth.signInWithOAuth() or GoogleSignin library.
-    const mockUser: GoogleProfile = {
-      id: 'usr_mobile_demo',
-      email: 'mobile.user@example.com',
-      name: 'Mobile Glucose User',
-      avatarUrl: 'https://api.dicebear.com/7.x/adventurer/svg?seed=usr_mobile_demo'
-    };
-    setUser(mockUser);
-    await syncAllData(mockUser);
+
+    try {
+      const redirectUrl = AuthSession.makeRedirectUri({
+        scheme: 'glucosync',
+      });
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.url) throw new Error('No OAuth URL returned from Supabase.');
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+
+      if (result.type === 'success' && result.url) {
+        // Extract session details from redirect URL hash/query params
+        const parsedUrl = new URL(result.url);
+        const paramsStr = parsedUrl.hash ? parsedUrl.hash.substring(1) : parsedUrl.search.substring(1);
+        const params = new URLSearchParams(paramsStr);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+
+        if (accessToken && refreshToken) {
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (sessionError) throw sessionError;
+        }
+      }
+    } catch (e: any) {
+      console.error('Google Sign-In Error:', e);
+      Alert.alert('Google Sign-In Failed', e.message || 'An error occurred during authentication.');
+    }
+  };
+
+  const handleEmailLogin = async (emailInput: string, passwordInput: string) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      Alert.alert('Configuration Missing', 'Supabase credentials are not configured.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailInput,
+        password: passwordInput,
+      });
+      if (error) throw error;
+    } catch (e: any) {
+      Alert.alert('Sign In Failed', e.message || 'Invalid credentials.');
+    }
+  };
+
+  const handleEmailSignUp = async (emailInput: string, passwordInput: string) => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      Alert.alert('Configuration Missing', 'Supabase credentials are not configured.');
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: emailInput,
+        password: passwordInput,
+      });
+      if (error) throw error;
+      Alert.alert('Sign Up Successful', 'Please check your email to confirm registration before signing in.');
+    } catch (e: any) {
+      Alert.alert('Sign Up Failed', e.message || 'An error occurred during registration.');
+    }
   };
 
   const handleLogout = async () => {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     setReadings([]);
     setAlerts([]);
@@ -380,6 +477,8 @@ export default function App() {
             user={user}
             onLoginClick={handleLogin}
             onLogoutClick={handleLogout}
+            onEmailLogin={handleEmailLogin}
+            onEmailSignUp={handleEmailSignUp}
             readingsCount={readings.length}
             onSyncTrigger={() => syncAllData(user)}
             alerts={alerts}

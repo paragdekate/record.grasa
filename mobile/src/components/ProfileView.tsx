@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, ScrollView, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Image, ScrollView, Platform, TextInput } from 'react-native';
 import { getSupabaseClient } from '../supabase';
 import type { GoogleProfile } from '../supabase';
 import { AlertsManager } from './AlertsManager';
@@ -9,6 +9,8 @@ interface ProfileViewProps {
   user: GoogleProfile | null;
   onLoginClick: () => void;
   onLogoutClick: () => void;
+  onEmailLogin: (email: string, password: string) => Promise<void>;
+  onEmailSignUp: (email: string, password: string) => Promise<void>;
   readingsCount: number;
   onSyncTrigger: () => Promise<{ success: boolean; count: number; message: string }>;
   alerts: InAppAlert[];
@@ -23,6 +25,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   user,
   onLoginClick,
   onLogoutClick,
+  onEmailLogin,
+  onEmailSignUp,
   readingsCount,
   onSyncTrigger,
   alerts,
@@ -34,6 +38,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 }) => {
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Email login states
+  const [authMode, setAuthMode] = useState<'google' | 'email'>('email');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSigningUp, setIsSigningUp] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
 
   const isConnected = !!getSupabaseClient();
 
@@ -50,12 +61,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   };
 
+  const handleEmailAuthSubmit = async () => {
+    if (!email || !password) return;
+    setAuthLoading(true);
+    try {
+      if (isSigningUp) {
+        await onEmailSignUp(email, password);
+      } else {
+        await onEmailLogin(email, password);
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       {/* 1. Account Section */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>GOOGLE AUTH PROFILE</Text>
+          <Text style={styles.cardTitle}>ACCOUNT PORTAL</Text>
           <Text style={[styles.statusText, isConnected ? styles.textCyan : styles.textMuted]}>
             {isConnected ? 'SUPABASE ACTIVE' : 'OFFLINE MODE'}
           </Text>
@@ -76,12 +101,81 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </View>
         ) : (
           <View style={styles.loginContainer}>
-            <Text style={styles.loginDesc}>
-              Sign in with Google to synchronize your readings and alerts automatically across devices and the cloud.
-            </Text>
-            <TouchableOpacity onPress={onLoginClick} style={styles.loginBtn}>
-              <Text style={styles.loginBtnText}>Sign In with Google</Text>
-            </TouchableOpacity>
+            {/* Toggle auth mode */}
+            <View style={styles.authModeToggle}>
+              <TouchableOpacity
+                onPress={() => setAuthMode('email')}
+                style={[styles.toggleModeBtn, authMode === 'email' && styles.toggleModeBtnActive]}
+              >
+                <Text style={[styles.toggleModeText, authMode === 'email' && styles.toggleModeTextActive]}>
+                  Email Log In
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setAuthMode('google')}
+                style={[styles.toggleModeBtn, authMode === 'google' && styles.toggleModeBtnActive]}
+              >
+                <Text style={[styles.toggleModeText, authMode === 'google' && styles.toggleModeTextActive]}>
+                  Google OAuth
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {authMode === 'google' ? (
+              <View style={{ width: '100%', alignItems: 'center' }}>
+                <Text style={styles.loginDesc}>
+                  Sign in with Google to synchronize your readings and alerts automatically across devices and the cloud.
+                </Text>
+                <TouchableOpacity onPress={onLoginClick} style={styles.loginBtn}>
+                  <Text style={styles.loginBtnText}>Sign In with Google</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ width: '100%' }}>
+                <Text style={styles.loginDesc}>
+                  Access your GlucoSync account using your email and password.
+                </Text>
+                
+                <TextInput
+                  placeholder="Email Address"
+                  placeholderTextColor="#6b7280"
+                  style={styles.authInput}
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                
+                <TextInput
+                  placeholder="Password"
+                  placeholderTextColor="#6b7280"
+                  style={styles.authInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+
+                <TouchableOpacity
+                  onPress={handleEmailAuthSubmit}
+                  disabled={authLoading}
+                  style={[styles.loginBtn, authLoading && styles.disabledBtn]}
+                >
+                  <Text style={styles.loginBtnText}>
+                    {authLoading ? 'Authenticating...' : isSigningUp ? 'Sign Up' : 'Sign In with Email'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setIsSigningUp(!isSigningUp)}
+                  style={{ marginTop: 12, alignItems: 'center' }}
+                >
+                  <Text style={styles.switchAuthText}>
+                    {isSigningUp ? 'Already have an account? Sign In' : 'Need an account? Sign Up'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -360,5 +454,46 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#ef4444',
+  },
+  authModeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#1a1d2a',
+    borderRadius: 8,
+    padding: 2,
+    marginBottom: 16,
+    width: '100%',
+  },
+  toggleModeBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  toggleModeBtnActive: {
+    backgroundColor: '#8b5cf6',
+  },
+  toggleModeText: {
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  toggleModeTextActive: {
+    color: '#ffffff',
+  },
+  authInput: {
+    backgroundColor: '#1a1d2a',
+    color: '#f3f4f6',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    marginBottom: 12,
+    width: '100%',
+  },
+  switchAuthText: {
+    color: '#8b5cf6',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
