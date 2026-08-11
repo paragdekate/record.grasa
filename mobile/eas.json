@@ -12,17 +12,13 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true,
-      "submit": true
+      "autoIncrement": true
     }
   },
   "submit": {
     "production": {
       "android": {
         "track": "production"
-      },
-      "ios": {
-        "submissionMethod": "api"
       }
     }
   }
