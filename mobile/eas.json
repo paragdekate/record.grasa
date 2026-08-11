@@ -19,7 +19,8 @@
     "production": {
       "android": {
         "track": "production"
-      }
+      },
+      "ios": {}
     }
   }
 }
