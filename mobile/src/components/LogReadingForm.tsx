@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Alert, Platform, Modal } from 'react-native';
 import { convertValue, MMOL_TO_MGDL, getStatus, getStatusColor, getContextLabel } from '../db';
 import type { ReadingUnit, ReadingContext } from '../db';
 import { CameraScanner } from './CameraScanner';
@@ -122,17 +122,24 @@ export const LogReadingForm: React.FC<LogReadingFormProps> = ({ onAddReading, pr
     'other',
   ];
 
-  if (showScanner) {
-    return (
-      <CameraScanner
-        onScanSuccess={handleScanSuccess}
-        onClose={() => setShowScanner(false)}
-      />
-    );
-  }
-
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <Modal
+        visible={showScanner}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowScanner(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.scannerModalContent}>
+            <CameraScanner
+              onScanSuccess={handleScanSuccess}
+              onClose={() => setShowScanner(false)}
+            />
+          </View>
+        </View>
+      </Modal>
+
       <View style={styles.logForm}>
         {/* Unit & Scanner Header Row */}
         <View style={styles.formHeaderRow}>
@@ -442,5 +449,22 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  scannerModalContent: {
+    width: '100%',
+    maxWidth: 340,
+    height: 480,
+    backgroundColor: '#000000',
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
 });
