@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
-import { convertValue, MMOL_TO_MGDL, getStatus, getStatusColor } from '../db';
+import { convertValue, MMOL_TO_MGDL, getStatus, getStatusColor, getContextLabel } from '../db';
 import type { ReadingUnit, ReadingContext } from '../db';
 import { CameraScanner } from './CameraScanner';
 
@@ -94,7 +94,7 @@ export const LogReadingForm: React.FC<LogReadingFormProps> = ({ onAddReading, pr
 
     onAddReading({
       value: rawValue,
-      unit: unit,
+      unit: 'mg/dL', // Always store in mg/dL internally
       context: context,
       notes: notes.trim(),
       measuredAt: new Date().toISOString(),
@@ -110,16 +110,16 @@ export const LogReadingForm: React.FC<LogReadingFormProps> = ({ onAddReading, pr
   const status = getStatus(rawValue);
   const statusColor = getStatusColor(status);
 
-  const contextOptions: { label: string; value: ReadingContext }[] = [
-    { label: 'Fasting 🌅', value: 'fasting' },
-    { label: 'Before Breakfast 🍳', value: 'before_breakfast' },
-    { label: 'After Breakfast 🥞', value: 'after_breakfast' },
-    { label: 'Before Lunch 🍱', value: 'before_lunch' },
-    { label: 'After Lunch 🥗', value: 'after_lunch' },
-    { label: 'Before Dinner 🥩', value: 'before_dinner' },
-    { label: 'After Dinner 🍝', value: 'after_dinner' },
-    { label: 'Bedtime 🌙', value: 'bedtime' },
-    { label: 'Other ❓', value: 'other' },
+  const contextOptions: ReadingContext[] = [
+    'fasting',
+    'before_breakfast',
+    'after_breakfast',
+    'before_lunch',
+    'after_lunch',
+    'before_dinner',
+    'after_dinner',
+    'bedtime',
+    'other',
   ];
 
   if (showScanner) {
@@ -133,96 +133,101 @@ export const LogReadingForm: React.FC<LogReadingFormProps> = ({ onAddReading, pr
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle}>NEW BLOOD GLUCOSE ENTRY</Text>
-          <TouchableOpacity onPress={() => setShowScanner(true)} style={styles.scanBtn}>
-            <Text style={styles.scanBtnText}>📸 OCR Scan Camera</Text>
+      <View style={styles.logForm}>
+        {/* Unit & Scanner Header Row */}
+        <View style={styles.formHeaderRow}>
+          <View style={styles.unitTogglePill}>
+            <TouchableOpacity
+              onPress={() => handleUnitToggle('mg/dL')}
+              style={[styles.unitToggleBtn, unit === 'mg/dL' && styles.unitToggleBtnActive]}
+            >
+              <Text style={[styles.unitToggleBtnText, unit === 'mg/dL' && styles.unitToggleBtnTextActive]}>
+                mg/dL
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleUnitToggle('mmol/L')}
+              style={[styles.unitToggleBtn, unit === 'mmol/L' && styles.unitToggleBtnActive]}
+            >
+              <Text style={[styles.unitToggleBtnText, unit === 'mmol/L' && styles.unitToggleBtnTextActive]}>
+                mmol/L
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity onPress={() => setShowScanner(true)} style={styles.btnScan}>
+            <Text style={styles.btnScanText}>📸 Scan Camera</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Big value layout */}
-        <View style={styles.valueDisplayCard}>
-          <Text style={[styles.statusText, { color: statusColor }]}>
-            {status.toUpperCase().replace('_', ' ')}
-          </Text>
-
-          <View style={styles.mainInputRow}>
-            <TextInput
-              keyboardType="numeric"
-              style={styles.mainInput}
-              value={displayValue}
-              onChangeText={handleInputChange}
-            />
-            <Text style={styles.mainUnitLabel}>{unit}</Text>
+        {/* Core Value Entry Wheel */}
+        <View style={[styles.valueEntryWheel, { borderColor: `${statusColor}22` }]}>
+          <View style={[styles.adjusterButtons, styles.colLeft]}>
+            <TouchableOpacity onPress={() => adjustValue(-10)} style={styles.btnAdj}>
+              <Text style={styles.btnAdjText}>-10</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => adjustValue(-1)} style={[styles.btnAdj, styles.sub]}>
+              <Text style={styles.btnAdjText}>-1</Text>
+            </TouchableOpacity>
           </View>
 
-          {/* Unit Toggle buttons */}
-          <View style={styles.unitToggleRow}>
-            {(['mg/dL', 'mmol/L'] as const).map(u => (
+          <View style={styles.displayNumericContainer}>
+            <TextInput
+              keyboardType="numeric"
+              value={displayValue}
+              onChangeText={handleInputChange}
+              style={[styles.sugarNumericInput, { color: statusColor }]}
+            />
+            <Text style={styles.displayUnit}>{unit}</Text>
+            <View style={[styles.displayStatusBadge, { backgroundColor: `${statusColor}15` }]}>
+              <Text style={[styles.displayStatusText, { color: statusColor }]}>
+                {status.replace('_', ' ').toUpperCase()}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.adjusterButtons, styles.colRight]}>
+            <TouchableOpacity onPress={() => adjustValue(10)} style={styles.btnAdj}>
+              <Text style={styles.btnAdjText}>+10</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => adjustValue(1)} style={[styles.btnAdj, styles.sub]}>
+              <Text style={styles.btnAdjText}>+1</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Context Grid Pills */}
+        <View style={styles.formGroup}>
+          <Text style={styles.inputLabel}>WHEN WAS THIS TAKEN?</Text>
+          <View style={styles.contextPillsGrid}>
+            {contextOptions.map((opt) => (
               <TouchableOpacity
-                key={u}
-                onPress={() => handleUnitToggle(u)}
-                style={[styles.unitToggleBtn, unit === u && styles.unitToggleBtnActive]}
+                key={opt}
+                onPress={() => setContext(opt)}
+                style={[styles.contextPill, context === opt && styles.contextPillActive]}
               >
-                <Text style={[styles.unitToggleText, unit === u && styles.unitToggleTextActive]}>
-                  {u}
+                <Text style={[styles.contextPillText, context === opt && styles.contextPillTextActive]}>
+                  {getContextLabel(opt)}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
-
-          {/* Quick Adjustment buttons */}
-          <View style={styles.adjustRow}>
-            <TouchableOpacity onPress={() => adjustValue(-10)} style={styles.adjustBtn}>
-              <Text style={styles.adjustBtnText}>-10</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => adjustValue(-1)} style={styles.adjustBtn}>
-              <Text style={styles.adjustBtnText}>-1</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => adjustValue(1)} style={styles.adjustBtn}>
-              <Text style={styles.adjustBtnText}>+1</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => adjustValue(10)} style={styles.adjustBtn}>
-              <Text style={styles.adjustBtnText}>+10</Text>
-            </TouchableOpacity>
-          </View>
         </View>
-      </View>
 
-      {/* Context Selection */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitleSection}>MEASUREMENT CONTEXT</Text>
-        <View style={styles.contextGrid}>
-          {contextOptions.map(option => (
-            <TouchableOpacity
-              key={option.value}
-              onPress={() => setContext(option.value)}
-              style={[
-                styles.contextBtn,
-                context === option.value && styles.contextBtnActive,
-              ]}
-            >
-              <Text style={[styles.contextBtnText, context === option.value && styles.contextBtnTextActive]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        {/* Notes Textarea */}
+        <View style={styles.formGroup}>
+          <Text style={styles.inputLabel}>NOTES</Text>
+          <TextInput
+            placeholder="Add comments (e.g. insulin, food, exercise)"
+            placeholderTextColor="#6b7280"
+            value={notes}
+            onChangeText={setNotes}
+            style={styles.notesInput}
+            multiline
+          />
         </View>
-      </View>
 
-      {/* Notes & Submission */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitleSection}>NOTES</Text>
-        <TextInput
-          placeholder="Add optional comments (e.g. insulin doses, food eaten, etc.)"
-          placeholderTextColor="#6b7280"
-          value={notes}
-          onChangeText={setNotes}
-          style={styles.notesInput}
-          multiline
-        />
-
+        {/* Submit button */}
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={isSuccess}
@@ -245,147 +250,169 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 16,
     paddingBottom: 32,
-    gap: 16,
   },
-  card: {
-    backgroundColor: '#141620',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+  logForm: {
+    gap: 20,
   },
-  cardHeader: {
+  formHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
   },
-  cardTitle: {
-    color: '#9ca3af',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  cardTitleSection: {
-    color: '#9ca3af',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  scanBtn: {
-    backgroundColor: 'rgba(6, 182, 212, 0.1)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.3)',
-  },
-  scanBtnText: {
-    color: '#06b6d4',
-    fontSize: 11,
-    fontWeight: 'bold',
-  },
-  valueDisplayCard: {
-    backgroundColor: '#1a1d2a',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    marginBottom: 8,
-  },
-  mainInputRow: {
+  unitTogglePill: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  mainInput: {
-    color: '#f3f4f6',
-    fontSize: 48,
-    fontWeight: '800',
-    textAlign: 'center',
-    minWidth: 120,
-  },
-  mainUnitLabel: {
-    color: '#6b7280',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  unitToggleRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    backgroundColor: '#141620',
+    borderRadius: 20,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   unitToggleBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#141620',
+    paddingVertical: 6,
+    borderRadius: 18,
   },
   unitToggleBtnActive: {
     backgroundColor: '#8b5cf6',
   },
-  unitToggleText: {
-    color: '#6b7280',
+  unitToggleBtnText: {
+    color: '#9ca3af',
     fontSize: 11,
     fontWeight: 'bold',
   },
-  unitToggleTextActive: {
+  unitToggleBtnTextActive: {
     color: '#ffffff',
   },
-  adjustRow: {
-    flexDirection: 'row',
-    gap: 8,
-    width: '100%',
-  },
-  adjustBtn: {
-    flex: 1,
-    backgroundColor: '#141620',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
+  btnScan: {
+    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(6, 182, 212, 0.3)',
   },
-  adjustBtnText: {
+  btnScanText: {
+    color: '#06b6d4',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  valueEntryWheel: {
+    backgroundColor: '#141620',
+    borderRadius: 160,
+    aspectRatio: 1,
+    width: '100%',
+    maxHeight: 280,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderWidth: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  adjusterButtons: {
+    flexDirection: 'column',
+    gap: 12,
+    alignItems: 'center',
+  },
+  colLeft: {
+    alignItems: 'flex-start',
+  },
+  colRight: {
+    alignItems: 'flex-end',
+  },
+  btnAdj: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#1a1d2a',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sub: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#161924',
+  },
+  btnAdjText: {
     color: '#f3f4f6',
     fontSize: 12,
     fontWeight: 'bold',
   },
-  contextGrid: {
+  displayNumericContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sugarNumericInput: {
+    fontSize: 48,
+    fontWeight: '800',
+    textAlign: 'center',
+    padding: 0,
+    margin: 0,
+    height: 60,
+    width: '100%',
+  },
+  displayUnit: {
+    color: '#6b7280',
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginTop: -2,
+    marginBottom: 6,
+  },
+  displayStatusBadge: {
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  displayStatusText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  formGroup: {
+    gap: 8,
+  },
+  inputLabel: {
+    color: '#9ca3af',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  contextPillsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
   },
-  contextBtn: {
-    backgroundColor: '#1a1d2a',
-    borderRadius: 8,
+  contextPill: {
+    backgroundColor: '#141620',
     paddingHorizontal: 12,
     paddingVertical: 8,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
-  contextBtnActive: {
+  contextPillActive: {
     backgroundColor: 'rgba(139, 92, 246, 0.15)',
     borderColor: '#8b5cf6',
   },
-  contextBtnText: {
+  contextPillText: {
     color: '#9ca3af',
     fontSize: 12,
   },
-  contextBtnTextActive: {
+  contextPillTextActive: {
     color: '#8b5cf6',
     fontWeight: 'bold',
   },
   notesInput: {
-    backgroundColor: '#1a1d2a',
+    backgroundColor: '#141620',
     color: '#f3f4f6',
     borderRadius: 12,
     padding: 12,
@@ -393,17 +420,23 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     fontSize: 13,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
-    marginBottom: 16,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
   },
   submitBtn: {
     backgroundColor: '#8b5cf6',
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
+    shadowColor: '#8b5cf6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
+    marginTop: 8,
   },
   successSubmitBtn: {
     backgroundColor: '#10b981',
+    shadowColor: '#10b981',
   },
   submitBtnText: {
     color: '#ffffff',
