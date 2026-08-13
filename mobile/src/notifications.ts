@@ -37,6 +37,7 @@ export async function scheduleNotificationForAlert(alert: InAppAlert) {
   await cancelNotificationForAlert(alert.id);
 
   try {
+    // 1. Schedule the main reminder
     const trigger = {
       type: 'calendar',
       hour: hours,
@@ -44,17 +45,48 @@ export async function scheduleNotificationForAlert(alert: InAppAlert) {
       repeats: true,
     } as any;
 
-    const notificationId = await Notifications.scheduleNotificationAsync({
+    const isRecordAlert = alert.type === 'record';
+
+    await Notifications.scheduleNotificationAsync({
       content: {
-        title: alert.type === 'meal' ? 'Meal Sugar Check 🍽️' : 'Record Blood Glucose 🩸',
+        title: isRecordAlert ? 'Record Blood Glucose 🩸' : 'Meal Sugar Check 🍽️',
         body: alert.label || `Time to record your blood sugar level!`,
         sound: true,
-        data: { alertId: alert.id, type: alert.type },
+        priority: isRecordAlert ? Notifications.AndroidNotificationPriority.MAX : Notifications.AndroidNotificationPriority.DEFAULT,
+        // Loud/long vibrate pattern for log-reminders
+        vibrate: isRecordAlert ? [0, 500, 250, 500, 250, 500, 250, 500] : undefined,
+        data: { alertId: alert.id, type: alert.type, isFollowUp: false },
       },
       trigger,
     });
-    
-    return notificationId;
+
+    // 2. For log-reminders, schedule 3 consecutive follow-up re-alerts at +30m, +60m, and +90m
+    if (isRecordAlert) {
+      const intervals = [30, 60, 90];
+      for (const offset of intervals) {
+        let followUpMins = minutes + offset;
+        let followUpHours = hours + Math.floor(followUpMins / 60);
+        followUpMins = followUpMins % 60;
+        followUpHours = followUpHours % 24;
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Urgent: Log Blood Sugar ⚠️',
+            body: `Still haven't recorded your sugar level! Please click here and log now.`,
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.MAX,
+            vibrate: [0, 500, 250, 500, 250, 500, 250, 500],
+            data: { alertId: alert.id, type: alert.type, isFollowUp: true },
+          },
+          trigger: {
+            type: 'calendar',
+            hour: followUpHours,
+            minute: followUpMins,
+            repeats: true,
+          } as any,
+        });
+      }
+    }
   } catch (error) {
     console.error('Failed to schedule notification for alert:', alert.id, error);
   }
@@ -72,6 +104,22 @@ export async function cancelNotificationForAlert(alertId: string) {
     }
   } catch (error) {
     console.error('Failed to cancel notifications for alert:', alertId, error);
+  }
+}
+
+export async function cancelPendingFollowUps() {
+  if (Platform.OS === 'web') return;
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const toCancel = scheduled.filter(
+      (n) => n.content.data && n.content.data.isFollowUp === true
+    );
+    for (const notif of toCancel) {
+      await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+    }
+    console.log(`Cancelled ${toCancel.length} active follow-up alarms.`);
+  } catch (error) {
+    console.error('Failed to cancel follow-up notifications:', error);
   }
 }
 

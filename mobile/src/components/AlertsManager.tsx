@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, TextInput, Switch, ScrollView, Platform, Alert } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import type { InAppAlert } from '../db';
 
 interface AlertsManagerProps {
@@ -22,6 +23,22 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
   const [mealType, setMealType] = useState<Required<InAppAlert>['mealType']>('breakfast');
   const [frequency, setFrequency] = useState<'daily' | 'alternate'>('daily');
   const [startDate, setStartDate] = useState(new Date().toISOString().slice(0, 10));
+  
+  // Date state specifically for roller picker
+  const [pickerTime, setPickerTime] = useState<Date>(() => {
+    const d = new Date();
+    d.setHours(8, 0, 0, 0);
+    return d;
+  });
+
+  const onChangeTime = (event: any, selectedDate?: Date) => {
+    if (selectedDate) {
+      setPickerTime(selectedDate);
+      const hours = selectedDate.getHours().toString().padStart(2, '0');
+      const minutes = selectedDate.getMinutes().toString().padStart(2, '0');
+      setTime(`${hours}:${minutes}`);
+    }
+  };
 
   const handleToggleActive = (alertItem: InAppAlert) => {
     onUpdateAlert({ ...alertItem, isActive: !alertItem.isActive });
@@ -81,14 +98,17 @@ export const AlertsManager: React.FC<AlertsManagerProps> = ({
           <Text style={styles.formTitle}>New Alert</Text>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>Time (HH:MM 24h format)</Text>
-            <TextInput
-              style={styles.input}
-              value={time}
-              onChangeText={setTime}
-              placeholder="e.g. 08:30"
-              placeholderTextColor="#6b7280"
-            />
+            <Text style={styles.label}>Select Alert Time</Text>
+            <View style={styles.pickerContainer}>
+              <DateTimePicker
+                value={pickerTime}
+                mode="time"
+                is24Hour={true}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onChangeTime}
+                textColor="#f3f4f6"
+              />
+            </View>
           </View>
 
           <View style={styles.formGroup}>
@@ -391,5 +411,13 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     fontSize: 16,
+  },
+  pickerContainer: {
+    backgroundColor: '#141620',
+    borderRadius: 8,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: Platform.OS === 'ios' ? 0 : 8,
   },
 });

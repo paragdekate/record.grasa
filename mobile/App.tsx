@@ -20,7 +20,7 @@ import {
 import type { SugarReading, ReadingUnit, InAppAlert } from './src/db';
 import { getSupabaseClient } from './src/supabase';
 import type { GoogleProfile } from './src/supabase';
-import { requestNotificationPermissions, syncAllScheduledNotifications } from './src/notifications';
+import { requestNotificationPermissions, syncAllScheduledNotifications, cancelPendingFollowUps } from './src/notifications';
 
 import { StatsDashboard } from './src/components/StatsDashboard';
 import { BloodSugarChart } from './src/components/BloodSugarChart';
@@ -320,6 +320,9 @@ export default function App() {
   const handleAddReading = async (newR: Omit<SugarReading, 'id'>) => {
     const added = await addReading(newR);
     setReadings(prev => [added, ...prev]);
+
+    // Cancel any active follow-up alarms since a reading was logged!
+    await cancelPendingFollowUps();
 
     // Upload to supabase if signed in
     const supabase = getSupabaseClient();

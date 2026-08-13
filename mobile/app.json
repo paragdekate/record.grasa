@@ -32,6 +32,9 @@
         "projectId": "bcdb6f71-c18a-4ccd-899f-960a149b8177"
       }
     },
-    "owner": "aryasoftech"
+    "owner": "aryasoftech",
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
   }
 }
