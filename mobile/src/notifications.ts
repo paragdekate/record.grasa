@@ -51,7 +51,7 @@ export async function scheduleNotificationForAlert(alert: InAppAlert) {
       content: {
         title: isRecordAlert ? 'Record Blood Glucose 🩸' : 'Meal Sugar Check 🍽️',
         body: alert.label || `Time to record your blood sugar level!`,
-        sound: true,
+        sound: isRecordAlert ? 'alarm.wav' : true,
         priority: isRecordAlert ? Notifications.AndroidNotificationPriority.MAX : Notifications.AndroidNotificationPriority.DEFAULT,
         // Loud/long vibrate pattern for log-reminders
         vibrate: isRecordAlert ? [0, 500, 250, 500, 250, 500, 250, 500] : undefined,
@@ -73,7 +73,7 @@ export async function scheduleNotificationForAlert(alert: InAppAlert) {
           content: {
             title: 'Urgent: Log Blood Sugar ⚠️',
             body: `Still haven't recorded your sugar level! Please click here and log now.`,
-            sound: true,
+            sound: 'alarm.wav',
             priority: Notifications.AndroidNotificationPriority.MAX,
             vibrate: [0, 500, 250, 500, 250, 500, 250, 500],
             data: { alertId: alert.id, type: alert.type, isFollowUp: true },

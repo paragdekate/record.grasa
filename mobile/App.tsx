@@ -190,8 +190,6 @@ export default function App() {
             await syncAllData(profile);
           } else {
             setUser(null);
-            setReadings([]);
-            setAlerts([]);
           }
         });
 

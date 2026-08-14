@@ -34,7 +34,17 @@
     },
     "owner": "aryasoftech",
     "plugins": [
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#8b5cf6",
+          "sounds": [
+            "./assets/alarm.wav"
+          ]
+        }
+      ]
     ]
   }
 }
